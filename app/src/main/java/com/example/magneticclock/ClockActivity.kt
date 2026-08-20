@@ -47,6 +47,8 @@ class ClockActivity : ComponentActivity() {
         }
 
         settingsManager = SettingsManager(this)
+
+        sendBroadcast(Intent("CLOCK_OPENED").apply { setPackage(packageName) })
         
         ContextCompat.registerReceiver(
             this,
@@ -56,11 +58,11 @@ class ClockActivity : ComponentActivity() {
         )
 
         setContent {
-            val settingsState = remember { mutableStateOf(AppSettings()) }
+            val scope = rememberCoroutineScope()
+            val settingsState = settingsManager.settingsFlow.collectAsState(initial = AppSettings())
             val batteryLevel = remember { mutableIntStateOf(0) }
             
             LaunchedEffect(Unit) {
-                settingsState.value = settingsManager.settingsFlow.first()
                 updateBatteryLevel { batteryLevel.intValue = it }
             }
 
@@ -68,6 +70,13 @@ class ClockActivity : ComponentActivity() {
                 settings = settingsState.value,
                 batteryLevel = batteryLevel.intValue,
                 onHotspotToggle = { toggleHotspot() },
+                onPowerOff = {
+                    scope.launch {
+                        sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })
+                        settingsManager.updateSettings(settingsState.value.copy(isMonitoringEnabled = false))
+                        finish()
+                    }
+                },
                 onClose = { 
                     sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })
                     finish() 

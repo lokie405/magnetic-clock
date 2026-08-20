@@ -15,7 +15,9 @@ class SettingsManager(private val context: Context) {
         val IS_AUTO_BRIGHTNESS = booleanPreferencesKey("is_auto_brightness")
         val ACTIVATION_THRESHOLD = floatPreferencesKey("activation_threshold")
         val DEACTIVATION_THRESHOLD = floatPreferencesKey("deactivation_threshold")
-        val TRIGGER_DURATION = longPreferencesKey("trigger_duration")
+        val TRIGGER_DELAY_ACTIVATION = longPreferencesKey("trigger_delay_activation")
+        val TRIGGER_DELAY_DEACTIVATION = longPreferencesKey("trigger_delay_deactivation")
+        val IS_MONITORING_ENABLED = booleanPreferencesKey("is_monitoring_enabled")
         val CLOCK_FONT = stringPreferencesKey("clock_font")
         val DATE_FONT = stringPreferencesKey("date_font")
         val BATTERY_FONT = stringPreferencesKey("battery_font")
@@ -37,7 +39,9 @@ class SettingsManager(private val context: Context) {
             isAutoBrightness = preferences[Keys.IS_AUTO_BRIGHTNESS] ?: true,
             activationThreshold = preferences[Keys.ACTIVATION_THRESHOLD] ?: 60f,
             deactivationThreshold = preferences[Keys.DEACTIVATION_THRESHOLD] ?: 50f,
-            triggerDurationMs = preferences[Keys.TRIGGER_DURATION] ?: 1000L,
+            triggerDelayActivationMs = preferences[Keys.TRIGGER_DELAY_ACTIVATION] ?: 1000L,
+            triggerDelayDeactivationMs = preferences[Keys.TRIGGER_DELAY_DEACTIVATION] ?: 1000L,
+            isMonitoringEnabled = preferences[Keys.IS_MONITORING_ENABLED] ?: true,
             clockFont = preferences[Keys.CLOCK_FONT] ?: "Default",
             dateFont = preferences[Keys.DATE_FONT] ?: "Default",
             batteryFont = preferences[Keys.BATTERY_FONT] ?: "Default",
@@ -50,7 +54,7 @@ class SettingsManager(private val context: Context) {
             deactivationVibrationIntensity = preferences[Keys.DEACTIVATION_VIBRATION] ?: 0,
             customClockFontPath = preferences[Keys.CUSTOM_CLOCK_FONT],
             customDateFontPath = preferences[Keys.CUSTOM_DATE_FONT],
-            customBatteryFontPath = preferences[Keys.CUSTOM_BATTERY_FONT]
+            customBatteryFontPath = preferences[Keys.CUSTOM_BATTERY_FONT],
         )
     }
 
@@ -60,7 +64,9 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.IS_AUTO_BRIGHTNESS] = settings.isAutoBrightness
             preferences[Keys.ACTIVATION_THRESHOLD] = settings.activationThreshold
             preferences[Keys.DEACTIVATION_THRESHOLD] = settings.deactivationThreshold
-            preferences[Keys.TRIGGER_DURATION] = settings.triggerDurationMs
+            preferences[Keys.TRIGGER_DELAY_ACTIVATION] = settings.triggerDelayActivationMs
+            preferences[Keys.TRIGGER_DELAY_DEACTIVATION] = settings.triggerDelayDeactivationMs
+            preferences[Keys.IS_MONITORING_ENABLED] = settings.isMonitoringEnabled
             preferences[Keys.CLOCK_FONT] = settings.clockFont
             preferences[Keys.DATE_FONT] = settings.dateFont
             preferences[Keys.BATTERY_FONT] = settings.batteryFont
@@ -71,9 +77,12 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.IS_DARK_MODE] = settings.isDarkMode
             preferences[Keys.ACTIVATION_VIBRATION] = settings.activationVibrationIntensity
             preferences[Keys.DEACTIVATION_VIBRATION] = settings.deactivationVibrationIntensity
-            settings.customClockFontPath?.let { preferences[Keys.CUSTOM_CLOCK_FONT] = it } ?: preferences.remove(Keys.CUSTOM_CLOCK_FONT)
-            settings.customDateFontPath?.let { preferences[Keys.CUSTOM_DATE_FONT] = it } ?: preferences.remove(Keys.CUSTOM_DATE_FONT)
-            settings.customBatteryFontPath?.let { preferences[Keys.CUSTOM_BATTERY_FONT] = it } ?: preferences.remove(Keys.CUSTOM_BATTERY_FONT)
+            settings.customClockFontPath?.let { preferences[Keys.CUSTOM_CLOCK_FONT] = it } 
+                ?: preferences.remove(Keys.CUSTOM_CLOCK_FONT)
+            settings.customDateFontPath?.let { preferences[Keys.CUSTOM_DATE_FONT] = it } 
+                ?: preferences.remove(Keys.CUSTOM_DATE_FONT)
+            settings.customBatteryFontPath?.let { preferences[Keys.CUSTOM_BATTERY_FONT] = it } 
+                ?: preferences.remove(Keys.CUSTOM_BATTERY_FONT)
         }
     }
 }

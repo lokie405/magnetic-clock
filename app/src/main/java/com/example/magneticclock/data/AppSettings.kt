@@ -5,7 +5,9 @@ data class AppSettings(
     val isAutoBrightness: Boolean = true,
     val activationThreshold: Float = 60f,
     val deactivationThreshold: Float = 50f,
-    val triggerDurationMs: Long = 1000L,
+    val triggerDelayActivationMs: Long = 1000L,
+    val triggerDelayDeactivationMs: Long = 1000L,
+    val isMonitoringEnabled: Boolean = true,
     val clockFont: String = "Default",
     val dateFont: String = "Default",
     val batteryFont: String = "Default",
@@ -18,5 +20,5 @@ data class AppSettings(
     val deactivationVibrationIntensity: Int = 0,
     val customClockFontPath: String? = null,
     val customDateFontPath: String? = null,
-    val customBatteryFontPath: String? = null
+    val customBatteryFontPath: String? = null,
 )

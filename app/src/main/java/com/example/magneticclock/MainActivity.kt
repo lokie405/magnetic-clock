@@ -10,7 +10,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -78,7 +77,7 @@ class MainActivity : ComponentActivity() {
             this, 
             receiver, 
             filter, 
-            ContextCompat.RECEIVER_NOT_EXPORTED
+            ContextCompat.RECEIVER_NOT_EXPORTED,
         )
 
         setContent {
@@ -86,7 +85,7 @@ class MainActivity : ComponentActivity() {
             val settingsState = settingsManager.settingsFlow.collectAsState(initial = AppSettings())
             
             MaterialTheme(
-                colorScheme = if (settingsState.value.isDarkMode) darkColorScheme() else lightColorScheme()
+                colorScheme = if (settingsState.value.isDarkMode) darkColorScheme() else lightColorScheme(),
             ) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     SettingsScreen(
@@ -95,11 +94,10 @@ class MainActivity : ComponentActivity() {
                         onSettingsChanged = { newSettings ->
                             scope.launch { settingsManager.updateSettings(newSettings) }
                         },
-                        onPreviewClick = {
-                            val intent = Intent(this, ClockActivity::class.java)
-                            startActivity(intent)
-                        }
-                    )
+                    ) {
+                        val intent = Intent(this, ClockActivity::class.java)
+                        startActivity(intent)
+                    }
                 }
             }
         }
@@ -117,13 +115,12 @@ fun SettingsScreen(
     settings: AppSettings,
     magnitude: Float,
     onSettingsChanged: (AppSettings) -> Unit,
-    onPreviewClick: () -> Unit
+    onPreviewClick: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     
     val fontPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         uri?.let {
             val path = copyFileToInternalStorage(context, it)
@@ -141,34 +138,69 @@ fun SettingsScreen(
                     IconButton(onClick = onPreviewClick) {
                         Icon(Icons.Default.PlayArrow, contentDescription = "Preview Clock")
                     }
-                }
+                },
             )
-        }
+        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier
                 .padding(padding)
                 .padding(16.dp)
                 .fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text("Service Monitoring", fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (settings.isMonitoringEnabled) "Active" else "Inactive", 
+                                fontSize = 12.sp, 
+                                color = if (settings.isMonitoringEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        Switch(
+                            checked = settings.isMonitoringEnabled,
+                            onCheckedChange = {
+                                onSettingsChanged(settings.copy(isMonitoringEnabled = it))
+                            },
+                        )
+                    }
+                }
+            }
+
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Dark Mode", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.weight(1f))
-                    Switch(checked = settings.isDarkMode, onCheckedChange = {
-                        onSettingsChanged(settings.copy(isDarkMode = it))
-                    })
+                    Switch(
+                        checked = settings.isDarkMode,
+                        onCheckedChange = {
+                            onSettingsChanged(settings.copy(isDarkMode = it))
+                        },
+                    )
                 }
             }
 
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Current Magnetic Field: ${"%.2f".format(magnitude)} µT", 
-                             fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("Activation: ${settings.activationThreshold} µT | Deactivation: ${settings.deactivationThreshold} µT",
-                             fontSize = 12.sp)
+                        Text(
+                            text = "Current Magnetic Field: ${"%.2f".format(magnitude)} µT", 
+                            fontSize = 18.sp, 
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "Activation: ${settings.activationThreshold} µT | Deactivation: ${settings.deactivationThreshold} µT",
+                            fontSize = 12.sp,
+                        )
                     }
                 }
             }
@@ -185,19 +217,46 @@ fun SettingsScreen(
             }
 
             item {
-                Text("Trigger Delay", fontWeight = FontWeight.Bold)
-                Text("${settings.triggerDurationMs / 1000f} seconds")
+                Text("Trigger Delays (Seconds)", fontWeight = FontWeight.Bold)
+                
+                Text("Activation: ${settings.triggerDelayActivationMs / 1000f}s")
                 Slider(
-                    value = settings.triggerDurationMs.toFloat(),
+                    value = settings.triggerDelayActivationMs.toFloat(),
                     onValueChange = { 
                         val rounded = (it / 500).toInt() * 500L
-                        onSettingsChanged(settings.copy(triggerDurationMs = rounded)) 
+                        onSettingsChanged(settings.copy(triggerDelayActivationMs = rounded)) 
                     },
                     valueRange = 0f..5000f,
-                    steps = 9 // 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5
+                    steps = 9,
+                )
+                
+                Spacer(Modifier.height(8.dp))
+                
+                Text("Deactivation: ${settings.triggerDelayDeactivationMs / 1000f}s")
+                Slider(
+                    value = settings.triggerDelayDeactivationMs.toFloat(),
+                    onValueChange = { 
+                        val rounded = (it / 500).toInt() * 500L
+                        onSettingsChanged(settings.copy(triggerDelayDeactivationMs = rounded)) 
+                    },
+                    valueRange = 0f..5000f,
+                    steps = 9,
                 )
             }
 
+            item {
+                Text("Notifications", fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = {
+                        val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Grant Notification Access")
+                }
+            }
+            
             item {
                 Text("Vibration Power", fontWeight = FontWeight.Bold)
                 
@@ -205,7 +264,7 @@ fun SettingsScreen(
                 Slider(
                     value = settings.activationVibrationIntensity.toFloat(),
                     onValueChange = { onSettingsChanged(settings.copy(activationVibrationIntensity = it.toInt())) },
-                    valueRange = 0f..255f
+                    valueRange = 0f..255f,
                 )
                 
                 Spacer(Modifier.height(8.dp))
@@ -214,7 +273,7 @@ fun SettingsScreen(
                 Slider(
                     value = settings.deactivationVibrationIntensity.toFloat(),
                     onValueChange = { onSettingsChanged(settings.copy(deactivationVibrationIntensity = it.toInt())) },
-                    valueRange = 0f..255f
+                    valueRange = 0f..255f,
                 )
             }
 
@@ -240,9 +299,12 @@ fun SettingsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("OnePlus Style (Red '1' in Hour & Min)")
                     Spacer(Modifier.weight(1f))
-                    Switch(checked = settings.isOnePlusStyle, onCheckedChange = {
-                        onSettingsChanged(settings.copy(isOnePlusStyle = it))
-                    })
+                    Switch(
+                        checked = settings.isOnePlusStyle,
+                        onCheckedChange = {
+                            onSettingsChanged(settings.copy(isOnePlusStyle = it))
+                        },
+                    )
                 }
             }
             
@@ -251,16 +313,19 @@ fun SettingsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Auto-Brightness")
                     Spacer(Modifier.weight(1f))
-                    Switch(checked = settings.isAutoBrightness, onCheckedChange = {
-                        onSettingsChanged(settings.copy(isAutoBrightness = it))
-                        if (!it) requestWriteSettingsPermission(context)
-                    })
+                    Switch(
+                        checked = settings.isAutoBrightness,
+                        onCheckedChange = {
+                            onSettingsChanged(settings.copy(isAutoBrightness = it))
+                            if (!it) requestWriteSettingsPermission(context)
+                        },
+                    )
                 }
                 if (!settings.isAutoBrightness) {
                     Slider(
                         value = settings.brightness,
                         onValueChange = { onSettingsChanged(settings.copy(brightness = it)) },
-                        valueRange = 0f..1f
+                        valueRange = 0f..1f,
                     )
                 }
             }
@@ -280,7 +345,7 @@ fun ThresholdControl(label: String, value: Float, onValueChange: (Float) -> Unit
                 value = value,
                 onValueChange = onValueChange,
                 valueRange = 0f..1000f,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
             )
             IconButton(onClick = { onValueChange((value + 1).coerceAtMost(1000f)) }) {
                 Icon(Icons.Default.Add, contentDescription = "Increase")
@@ -294,7 +359,7 @@ fun FontSelector(
     label: String, 
     selectedFont: String, 
     customPath: String?, 
-    onFontSelected: (String, String?) -> Unit
+    onFontSelected: (String, String?) -> Unit,
 ) {
     Column {
         Text(label, fontSize = 14.sp)
@@ -303,8 +368,8 @@ fun FontSelector(
                 Button(
                     onClick = { onFontSelected(font, null) },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (font == selectedFont && customPath == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-                    )
+                        containerColor = if ((font == selectedFont) && (customPath == null)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    ),
                 ) {
                     Text(font, fontSize = 12.sp)
                 }
@@ -313,8 +378,8 @@ fun FontSelector(
                 Button(
                     onClick = { onFontSelected("Custom", "") },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (customPath != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-                    )
+                        containerColor = if (customPath != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    ),
                 ) {
                     Text(if (customPath != null) "Custom Font Loaded" else "Load Custom Font", fontSize = 12.sp)
                 }
@@ -330,7 +395,7 @@ fun SizeSlider(label: String, value: Int, onValueChange: (Int) -> Unit) {
         Slider(
             value = value.toFloat(),
             onValueChange = { onValueChange(it.toInt()) },
-            valueRange = 10f..200f
+            valueRange = 10f..200f,
         )
     }
 }

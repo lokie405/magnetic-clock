@@ -36,17 +36,24 @@ class MagneticSensorService : Service(), SensorEventListener {
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "CLOCK_CLOSED_MANUALLY") {
-                isClockActive = false
-                activationStartTime = 0
-                deactivationStartTime = 0
+            when (intent?.action) {
+                "CLOCK_CLOSED_MANUALLY" -> {
+                    isClockActive = false
+                    activationStartTime = 0
+                    deactivationStartTime = 0
+                }
+                "CLOCK_OPENED" -> {
+                    isClockActive = true
+                    activationStartTime = 0
+                    deactivationStartTime = 0
+                }
             }
         }
     }
 
     override fun onCreate() {
         super.onCreate()
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         magneticSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
         settingsManager = SettingsManager(this)
         
@@ -59,24 +66,53 @@ class MagneticSensorService : Service(), SensorEventListener {
         }
 
         serviceScope.launch {
-            settingsManager.settingsFlow.collect {
-                currentSettings = it
+            settingsManager.settingsFlow.collect { newSettings ->
+                val wasEnabled = currentSettings.isMonitoringEnabled
+                currentSettings = newSettings
+                
+                if (newSettings.isMonitoringEnabled != wasEnabled) {
+                    // Reset trigger state on toggle
+                    activationStartTime = 0
+                    deactivationStartTime = 0
+                    
+                    if (newSettings.isMonitoringEnabled) {
+                        registerSensor()
+                    } else {
+                        isClockActive = false
+                        unregisterSensor()
+                    }
+                }
             }
         }
 
+        val filter = IntentFilter().apply {
+            addAction("CLOCK_CLOSED_MANUALLY")
+            addAction("CLOCK_OPENED")
+        }
+        
         ContextCompat.registerReceiver(
             this,
             receiver,
-            IntentFilter("CLOCK_CLOSED_MANUALLY"),
-            ContextCompat.RECEIVER_NOT_EXPORTED
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
         )
 
         createNotificationChannel()
         startForeground(1, createNotification())
         
+        if (currentSettings.isMonitoringEnabled) {
+            registerSensor()
+        }
+    }
+
+    private fun registerSensor() {
         magneticSensor?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
+    }
+
+    private fun unregisterSensor() {
+        sensorManager.unregisterListener(this)
     }
 
     private fun createNotificationChannel() {
@@ -105,7 +141,7 @@ class MagneticSensorService : Service(), SensorEventListener {
             val x = event.values[0]
             val y = event.values[1]
             val z = event.values[2]
-            val magnitude = sqrt(x * x + y * y + z * z)
+            val magnitude = sqrt((x * x) + (y * y) + (z * z))
 
             val intent = Intent("MAGNETIC_FIELD_UPDATE").apply {
                 setPackage(packageName)
@@ -124,7 +160,7 @@ class MagneticSensorService : Service(), SensorEventListener {
                 deactivationStartTime = 0
                 if (activationStartTime == 0L) {
                     activationStartTime = System.currentTimeMillis()
-                } else if (System.currentTimeMillis() - activationStartTime >= currentSettings.triggerDurationMs) {
+                } else if (System.currentTimeMillis() - activationStartTime >= currentSettings.triggerDelayActivationMs) {
                     vibrate(currentSettings.activationVibrationIntensity)
                     startClockActivity()
                     isClockActive = true
@@ -139,7 +175,7 @@ class MagneticSensorService : Service(), SensorEventListener {
                 activationStartTime = 0
                 if (deactivationStartTime == 0L) {
                     deactivationStartTime = System.currentTimeMillis()
-                } else if (System.currentTimeMillis() - deactivationStartTime >= currentSettings.triggerDurationMs) {
+                } else if (System.currentTimeMillis() - deactivationStartTime >= currentSettings.triggerDelayDeactivationMs) {
                     vibrate(currentSettings.deactivationVibrationIntensity)
                     isClockActive = false
                     deactivationStartTime = 0
@@ -176,7 +212,7 @@ class MagneticSensorService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
-        sensorManager.unregisterListener(this)
+        unregisterSensor()
         unregisterReceiver(receiver)
         serviceScope.cancel()
     }
