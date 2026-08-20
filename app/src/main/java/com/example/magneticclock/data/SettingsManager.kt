@@ -1,0 +1,79 @@
+package com.example.magneticclock.data
+
+import android.content.Context
+import androidx.datastore.preferences.core.*
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+private val Context.dataStore by preferencesDataStore(name = "settings")
+
+class SettingsManager(private val context: Context) {
+
+    private object Keys {
+        val BRIGHTNESS = floatPreferencesKey("brightness")
+        val IS_AUTO_BRIGHTNESS = booleanPreferencesKey("is_auto_brightness")
+        val ACTIVATION_THRESHOLD = floatPreferencesKey("activation_threshold")
+        val DEACTIVATION_THRESHOLD = floatPreferencesKey("deactivation_threshold")
+        val TRIGGER_DURATION = longPreferencesKey("trigger_duration")
+        val CLOCK_FONT = stringPreferencesKey("clock_font")
+        val DATE_FONT = stringPreferencesKey("date_font")
+        val BATTERY_FONT = stringPreferencesKey("battery_font")
+        val CLOCK_SIZE = intPreferencesKey("clock_size")
+        val DATE_SIZE = intPreferencesKey("date_size")
+        val BATTERY_SIZE = intPreferencesKey("battery_size")
+        val IS_ONEPLUS_STYLE = booleanPreferencesKey("is_oneplus_style")
+        val IS_DARK_MODE = booleanPreferencesKey("is_dark_mode")
+        val ACTIVATION_VIBRATION = intPreferencesKey("activation_vibration")
+        val DEACTIVATION_VIBRATION = intPreferencesKey("deactivation_vibration")
+        val CUSTOM_CLOCK_FONT = stringPreferencesKey("custom_clock_font")
+        val CUSTOM_DATE_FONT = stringPreferencesKey("custom_date_font")
+        val CUSTOM_BATTERY_FONT = stringPreferencesKey("custom_battery_font")
+    }
+
+    val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
+        AppSettings(
+            brightness = preferences[Keys.BRIGHTNESS] ?: 0.5f,
+            isAutoBrightness = preferences[Keys.IS_AUTO_BRIGHTNESS] ?: true,
+            activationThreshold = preferences[Keys.ACTIVATION_THRESHOLD] ?: 60f,
+            deactivationThreshold = preferences[Keys.DEACTIVATION_THRESHOLD] ?: 50f,
+            triggerDurationMs = preferences[Keys.TRIGGER_DURATION] ?: 1000L,
+            clockFont = preferences[Keys.CLOCK_FONT] ?: "Default",
+            dateFont = preferences[Keys.DATE_FONT] ?: "Default",
+            batteryFont = preferences[Keys.BATTERY_FONT] ?: "Default",
+            clockSizeSp = preferences[Keys.CLOCK_SIZE] ?: 64,
+            dateSizeSp = preferences[Keys.DATE_SIZE] ?: 24,
+            batterySizeSp = preferences[Keys.BATTERY_SIZE] ?: 18,
+            isOnePlusStyle = preferences[Keys.IS_ONEPLUS_STYLE] ?: false,
+            isDarkMode = preferences[Keys.IS_DARK_MODE] ?: true,
+            activationVibrationIntensity = preferences[Keys.ACTIVATION_VIBRATION] ?: 0,
+            deactivationVibrationIntensity = preferences[Keys.DEACTIVATION_VIBRATION] ?: 0,
+            customClockFontPath = preferences[Keys.CUSTOM_CLOCK_FONT],
+            customDateFontPath = preferences[Keys.CUSTOM_DATE_FONT],
+            customBatteryFontPath = preferences[Keys.CUSTOM_BATTERY_FONT]
+        )
+    }
+
+    suspend fun updateSettings(settings: AppSettings) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.BRIGHTNESS] = settings.brightness
+            preferences[Keys.IS_AUTO_BRIGHTNESS] = settings.isAutoBrightness
+            preferences[Keys.ACTIVATION_THRESHOLD] = settings.activationThreshold
+            preferences[Keys.DEACTIVATION_THRESHOLD] = settings.deactivationThreshold
+            preferences[Keys.TRIGGER_DURATION] = settings.triggerDurationMs
+            preferences[Keys.CLOCK_FONT] = settings.clockFont
+            preferences[Keys.DATE_FONT] = settings.dateFont
+            preferences[Keys.BATTERY_FONT] = settings.batteryFont
+            preferences[Keys.CLOCK_SIZE] = settings.clockSizeSp
+            preferences[Keys.DATE_SIZE] = settings.dateSizeSp
+            preferences[Keys.BATTERY_SIZE] = settings.batterySizeSp
+            preferences[Keys.IS_ONEPLUS_STYLE] = settings.isOnePlusStyle
+            preferences[Keys.IS_DARK_MODE] = settings.isDarkMode
+            preferences[Keys.ACTIVATION_VIBRATION] = settings.activationVibrationIntensity
+            preferences[Keys.DEACTIVATION_VIBRATION] = settings.deactivationVibrationIntensity
+            settings.customClockFontPath?.let { preferences[Keys.CUSTOM_CLOCK_FONT] = it } ?: preferences.remove(Keys.CUSTOM_CLOCK_FONT)
+            settings.customDateFontPath?.let { preferences[Keys.CUSTOM_DATE_FONT] = it } ?: preferences.remove(Keys.CUSTOM_DATE_FONT)
+            settings.customBatteryFontPath?.let { preferences[Keys.CUSTOM_BATTERY_FONT] = it } ?: preferences.remove(Keys.CUSTOM_BATTERY_FONT)
+        }
+    }
+}

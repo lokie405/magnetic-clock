@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.MagneticClock" parent="android:Theme.Material.NoActionBar" />
+
+    <style name="Theme.MagneticClock.FullScreen" parent="Theme.MagneticClock">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>
