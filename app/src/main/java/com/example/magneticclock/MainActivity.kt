@@ -134,7 +134,7 @@ fun SettingsScreen(
                     settings.copy(
                         customClockFontPath = p,
                         customFonts = newCustomFonts,
-                    )
+                    ),
                 )
             }
         }
@@ -301,24 +301,23 @@ fun SettingsScreen(
                             onSettingsChanged(settings.copy(clockFont = name, customClockFontPath = path))
                         }
                     },
-                    onDeleteFont = { path ->
-                        val newCustomFonts = settings.customFonts - path
-                        val isSelected = settings.customClockFontPath == path
-                        onSettingsChanged(
-                            settings.copy(
-                                customFonts = newCustomFonts,
-                                clockFont = if (isSelected) "Default" else settings.clockFont,
-                                customClockFontPath = if (isSelected) null else settings.customClockFontPath,
-                            )
+                ) { path ->
+                    val newCustomFonts = settings.customFonts - path
+                    val isSelected = settings.customClockFontPath == path
+                    onSettingsChanged(
+                        settings.copy(
+                            customFonts = newCustomFonts,
+                            clockFont = if (isSelected) "Default" else settings.clockFont,
+                            customClockFontPath = if (isSelected) null else settings.customClockFontPath,
                         )
-                        // Delete file from storage
-                        try {
-                            File(path).delete()
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                    )
+                    // Delete file from storage
+                    try {
+                        File(path).delete()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                )
+                }
             }
 
             item {
@@ -336,6 +335,19 @@ fun SettingsScreen(
                         checked = settings.isOnePlusStyle,
                         onCheckedChange = {
                             onSettingsChanged(settings.copy(isOnePlusStyle = it))
+                        },
+                    )
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Show Magnetic Field in Clock")
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = settings.showMagneticField,
+                        onCheckedChange = {
+                            onSettingsChanged(settings.copy(showMagneticField = it))
                         },
                     )
                 }
@@ -419,7 +431,7 @@ fun FontSelector(
                 val file = File(path)
                 val fileName = file.name
                 val isSelected = (customPath == path)
-                var showDeleteConfirm by remember { mutableStateOf(false) }
+                var showDeleteConfirm by remember { mutableStateOf(value = false) }
 
                 if (showDeleteConfirm) {
                     AlertDialog(

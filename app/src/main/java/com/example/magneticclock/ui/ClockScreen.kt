@@ -39,6 +39,7 @@ import kotlinx.coroutines.delay
 fun ClockScreen(
     settings: AppSettings,
     batteryLevel: Int,
+    magnitude: Float,
     onSettingsChanged: (AppSettings) -> Unit,
     onHotspotToggle: () -> Unit,
     onPowerOff: () -> Unit,
@@ -65,6 +66,17 @@ fun ClockScreen(
             .clickable { onClose() },
         contentAlignment = Alignment.Center,
     ) {
+        if (settings.showMagneticField) {
+            Text(
+                text = "${"%.1f".format(magnitude)} µT",
+                color = secondaryColor,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+            )
+        }
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,

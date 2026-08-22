@@ -22,4 +22,5 @@ data class AppSettings(
     val customDateFontPath: String? = null,
     val customBatteryFontPath: String? = null,
     val customFonts: Set<String> = emptySet(),
+    val showMagneticField: Boolean = false,
 )

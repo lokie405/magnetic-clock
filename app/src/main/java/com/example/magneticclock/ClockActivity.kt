@@ -12,21 +12,29 @@ import androidx.compose.runtime.*
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.SettingsManager
 import com.example.magneticclock.ui.ClockScreen
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class ClockActivity : ComponentActivity() {
 
     private lateinit var settingsManager: SettingsManager
+    private var currentMagnitude = mutableFloatStateOf(0f)
+
     private val closeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // Exit to home screen
-            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            when (intent?.action) {
+                "CLOSE_CLOCK_ACTIVITY" -> {
+                    // Exit to home screen
+                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(homeIntent)
+                    finish()
+                }
+                "MAGNETIC_FIELD_UPDATE" -> {
+                    currentMagnitude.floatValue = intent.getFloatExtra("magnitude", 0f)
+                }
             }
-            startActivity(homeIntent)
-            finish()
         }
     }
 
@@ -38,7 +46,7 @@ class ClockActivity : ComponentActivity() {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
         )
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
@@ -53,7 +61,10 @@ class ClockActivity : ComponentActivity() {
         ContextCompat.registerReceiver(
             this,
             closeReceiver,
-            IntentFilter("CLOSE_CLOCK_ACTIVITY"),
+            IntentFilter().apply {
+                addAction("CLOSE_CLOCK_ACTIVITY")
+                addAction("MAGNETIC_FIELD_UPDATE")
+            },
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
 
@@ -81,6 +92,7 @@ class ClockActivity : ComponentActivity() {
             ClockScreen(
                 settings = settingsState,
                 batteryLevel = batteryLevel.intValue,
+                magnitude = currentMagnitude.floatValue,
                 onSettingsChanged = { newSettings ->
                     scope.launch { settingsManager.updateSettings(newSettings) }
                 },
@@ -105,7 +117,7 @@ class ClockActivity : ComponentActivity() {
         val batteryStatus = registerReceiver(null, intentFilter)
         val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-        if (level != -1 && scale != -1) {
+        if (level != -1 && (scale != -1)) {
             onResult((level * 100 / scale.toFloat()).toInt())
         }
     }
