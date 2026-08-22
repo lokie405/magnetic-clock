@@ -5,7 +5,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -307,28 +306,6 @@ fun SettingsScreen(
                     )
                 }
             }
-            
-            item {
-                Text("Brightness Settings", fontWeight = FontWeight.Bold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Auto-Brightness")
-                    Spacer(Modifier.weight(1f))
-                    Switch(
-                        checked = settings.isAutoBrightness,
-                        onCheckedChange = {
-                            onSettingsChanged(settings.copy(isAutoBrightness = it))
-                            if (!it) requestWriteSettingsPermission(context)
-                        },
-                    )
-                }
-                if (!settings.isAutoBrightness) {
-                    Slider(
-                        value = settings.brightness,
-                        onValueChange = { onSettingsChanged(settings.copy(brightness = it)) },
-                        valueRange = 0f..1f,
-                    )
-                }
-            }
         }
     }
 }
@@ -430,13 +407,4 @@ fun copyFileToInternalStorage(context: Context, uri: Uri): String? {
         e.printStackTrace()
     }
     return null
-}
-
-fun requestWriteSettingsPermission(context: Context) {
-    if (!Settings.System.canWrite(context)) {
-        val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS)
-        intent.data = Uri.parse("package:" + context.packageName)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
-    }
 }

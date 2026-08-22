@@ -59,21 +59,36 @@ class ClockActivity : ComponentActivity() {
 
         setContent {
             val scope = rememberCoroutineScope()
-            val settingsState = settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+            val settingsState by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
             val batteryLevel = remember { mutableIntStateOf(0) }
             
+            // Apply brightness settings to the window
+            LaunchedEffect(settingsState.isAutoBrightness, settingsState.brightness) {
+                val lp = window.attributes
+                if (settingsState.isAutoBrightness) {
+                    lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                } else {
+                    // screenBrightness takes 0.0 to 1.0
+                    lp.screenBrightness = settingsState.brightness.coerceIn(0.01f, 1.0f)
+                }
+                window.attributes = lp
+            }
+
             LaunchedEffect(Unit) {
                 updateBatteryLevel { batteryLevel.intValue = it }
             }
 
             ClockScreen(
-                settings = settingsState.value,
+                settings = settingsState,
                 batteryLevel = batteryLevel.intValue,
+                onSettingsChanged = { newSettings ->
+                    scope.launch { settingsManager.updateSettings(newSettings) }
+                },
                 onHotspotToggle = { toggleHotspot() },
                 onPowerOff = {
                     scope.launch {
                         sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })
-                        settingsManager.updateSettings(settingsState.value.copy(isMonitoringEnabled = false))
+                        settingsManager.updateSettings(settingsState.copy(isMonitoringEnabled = false))
                         finish()
                     }
                 },

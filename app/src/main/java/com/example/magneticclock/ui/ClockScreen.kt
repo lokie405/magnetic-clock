@@ -7,11 +7,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BrightnessAuto
+import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.WifiTethering
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +67,7 @@ val availableFonts = listOf("Default", "Roboto", "Montserrat", "Playfair Display
 fun ClockScreen(
     settings: AppSettings,
     batteryLevel: Int,
+    onSettingsChanged: (AppSettings) -> Unit,
     onHotspotToggle: () -> Unit,
     onPowerOff: () -> Unit,
     onClose: () -> Unit,
@@ -216,6 +217,55 @@ fun ClockScreen(
                         contentDescription = "Power Off",
                         tint = Color.Red,
                         modifier = Modifier.size(settings.batterySizeSp.dp * 1.5f),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Brightness Control
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(0.8f)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (!settings.isAutoBrightness) {
+                    Icon(
+                        imageVector = Icons.Default.BrightnessLow,
+                        contentDescription = "Brightness",
+                        tint = contentColor,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Slider(
+                        value = settings.brightness,
+                        onValueChange = { onSettingsChanged(settings.copy(brightness = it)) },
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        colors = SliderDefaults.colors(
+                            thumbColor = contentColor,
+                            activeTrackColor = contentColor,
+                        ),
+                    )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = "Auto-Brightness Active",
+                        color = secondaryColor,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        val newAuto = !settings.isAutoBrightness
+                        onSettingsChanged(settings.copy(isAutoBrightness = newAuto))
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.BrightnessAuto,
+                        contentDescription = "Toggle Auto Brightness",
+                        tint = if (settings.isAutoBrightness) Color.Green else contentColor,
                     )
                 }
             }
