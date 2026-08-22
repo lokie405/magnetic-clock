@@ -336,18 +336,22 @@ fun SettingsScreen(
 @Composable
 fun ThresholdControl(label: String, value: Float, onValueChange: (Float) -> Unit) {
     Column {
-        Text("$label: ${value.toInt()} µT", fontSize = 14.sp)
+        Text(
+            text = "$label: ${value.toInt()} µT", 
+            fontSize = 14.sp,
+        )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onValueChange((value - 1).coerceAtLeast(0f)) }) {
+            IconButton(onClick = { onValueChange((value - 5).coerceAtLeast(0f)) }) {
                 Icon(Icons.Default.Remove, contentDescription = "Decrease")
             }
             Slider(
                 value = value,
-                onValueChange = onValueChange,
-                valueRange = 0f..1000f,
+                onValueChange = { onValueChange((it / 5).toInt() * 5f) },
+                valueRange = 0f..500f,
+                steps = 99,
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = { onValueChange((value + 1).coerceAtMost(1000f)) }) {
+            IconButton(onClick = { onValueChange((value + 5).coerceAtMost(500f)) }) {
                 Icon(Icons.Default.Add, contentDescription = "Increase")
             }
         }
