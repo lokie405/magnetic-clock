@@ -9,6 +9,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -29,9 +31,12 @@ import androidx.core.content.ContextCompat
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.SettingsManager
 import com.example.magneticclock.ui.availableFonts
+import com.example.magneticclock.ui.getFontFamily
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
 
 class MainActivity : ComponentActivity() {
 
@@ -123,9 +128,15 @@ fun SettingsScreen(
     ) { uri: Uri? ->
         uri?.let {
             val path = copyFileToInternalStorage(context, it)
-            // For simplicity, let's assume we pick for Clock font here. 
-            // In a real app, you'd pass which element you're picking for.
-            onSettingsChanged(settings.copy(customClockFontPath = path))
+            path?.let { p ->
+                val newCustomFonts = settings.customFonts + p
+                onSettingsChanged(
+                    settings.copy(
+                        customClockFontPath = p,
+                        customFonts = newCustomFonts,
+                    )
+                )
+            }
         }
     }
 
@@ -278,13 +289,36 @@ fun SettingsScreen(
 
             item {
                 Text("Fonts", fontWeight = FontWeight.Bold)
-                FontSelector("Clock Font", settings.clockFont, settings.customClockFontPath) { name, path ->
-                    if (path != null) {
-                        fontPickerLauncher.launch("*/*")
-                    } else {
-                        onSettingsChanged(settings.copy(clockFont = name, customClockFontPath = null))
+                FontSelector(
+                    label = "Clock Font",
+                    selectedFont = settings.clockFont,
+                    customPath = settings.customClockFontPath,
+                    customFonts = settings.customFonts,
+                    onFontSelected = { name, path ->
+                        if (name == "ADD_NEW") {
+                            fontPickerLauncher.launch("*/*")
+                        } else {
+                            onSettingsChanged(settings.copy(clockFont = name, customClockFontPath = path))
+                        }
+                    },
+                    onDeleteFont = { path ->
+                        val newCustomFonts = settings.customFonts - path
+                        val isSelected = settings.customClockFontPath == path
+                        onSettingsChanged(
+                            settings.copy(
+                                customFonts = newCustomFonts,
+                                clockFont = if (isSelected) "Default" else settings.clockFont,
+                                customClockFontPath = if (isSelected) null else settings.customClockFontPath,
+                            )
+                        )
+                        // Delete file from storage
+                        try {
+                            File(path).delete()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
                     }
-                }
+                )
             }
 
             item {
@@ -335,34 +369,154 @@ fun ThresholdControl(label: String, value: Float, onValueChange: (Float) -> Unit
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FontSelector(
-    label: String, 
-    selectedFont: String, 
-    customPath: String?, 
+    label: String,
+    selectedFont: String,
+    customPath: String?,
+    customFonts: Set<String>,
     onFontSelected: (String, String?) -> Unit,
+    onDeleteFont: (String) -> Unit,
 ) {
+    val currentTime = remember { Calendar.getInstance().time }
+    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val timeStr = timeFormat.format(currentTime)
+
     Column {
         Text(label, fontSize = 14.sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
+        ) {
+            // Built-in Fonts
             items(availableFonts) { font ->
-                Button(
+                val isSelected = (font == selectedFont) && (customPath == null)
+                Surface(
                     onClick = { onFontSelected(font, null) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if ((font == selectedFont) && (customPath == null)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    ),
+                    shape = MaterialTheme.shapes.medium,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.height(60.dp),
                 ) {
-                    Text(font, fontSize = 12.sp)
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = timeStr,
+                            fontSize = 18.sp,
+                            fontFamily = getFontFamily(font, null),
+                        )
+                        Text(font, fontSize = 10.sp)
+                    }
                 }
             }
-            item {
-                Button(
-                    onClick = { onFontSelected("Custom", "") },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (customPath != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    ),
+            
+            // Custom Fonts
+            items(customFonts.toList()) { path ->
+                val file = File(path)
+                val fileName = file.name
+                val isSelected = (customPath == path)
+                var showDeleteConfirm by remember { mutableStateOf(false) }
+
+                if (showDeleteConfirm) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteConfirm = false },
+                        title = { Text("Видалити шрифт?") },
+                        text = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Ви впевнені, що хочете видалити цей шрифт із програми?")
+                                Spacer(modifier = Modifier.height(16.dp))
+                                // Preview of the font being deleted
+                                Surface(
+                                    shape = MaterialTheme.shapes.medium,
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.height(60.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                    ) {
+                                        Text(
+                                            text = timeStr,
+                                            fontSize = 18.sp,
+                                            fontFamily = getFontFamily("Custom", path),
+                                        )
+                                        Text(
+                                            text = fileName.take(10),
+                                            fontSize = 10.sp,
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                onDeleteFont(path)
+                                showDeleteConfirm = false
+                            }) {
+                                Text("Видалити", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeleteConfirm = false }) {
+                                Text("Скасувати")
+                            }
+                        }
+                    )
+                }
+                
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .height(60.dp)
+                        .combinedClickable(
+                            onClick = { onFontSelected("Custom", path) },
+                            onLongClick = { showDeleteConfirm = true }
+                        ),
                 ) {
-                    Text(if (customPath != null) "Custom Font Loaded" else "Load Custom Font", fontSize = 12.sp)
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = timeStr,
+                            fontSize = 18.sp,
+                            fontFamily = getFontFamily("Custom", path),
+                        )
+                        Text(
+                            text = fileName.take(10),
+                            fontSize = 10.sp,
+                        )
+                    }
+                }
+            }
+
+            // Add New Button
+            item {
+                Surface(
+                    onClick = { onFontSelected("ADD_NEW", null) },
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.height(60.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Font")
+                        Spacer(Modifier.width(4.dp))
+                        Text("Load Font", fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -385,10 +539,19 @@ fun copyFileToInternalStorage(context: Context, uri: Uri): String? {
     val returnCursor = context.contentResolver.query(uri, null, null, null, null)
     val nameIndex = returnCursor?.getColumnIndex(OpenableColumns.DISPLAY_NAME)
     returnCursor?.moveToFirst()
-    val name = returnCursor?.getString(nameIndex ?: 0) ?: "custom_font.ttf"
+    var name = returnCursor?.getString(nameIndex ?: 0) ?: "custom_font.ttf"
     returnCursor?.close()
 
-    val file = File(context.filesDir, name)
+    val fontsDir = File(context.filesDir, "fonts")
+    if (!fontsDir.exists()) fontsDir.mkdirs()
+
+    var file = File(fontsDir, name)
+    if (file.exists()) {
+        // If file exists, prepend timestamp to make it unique
+        name = "${System.currentTimeMillis()}_$name"
+        file = File(fontsDir, name)
+    }
+
     try {
         val inputStream = context.contentResolver.openInputStream(uri)
         val outputStream = FileOutputStream(file)

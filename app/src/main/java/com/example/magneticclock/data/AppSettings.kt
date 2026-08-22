@@ -21,4 +21,5 @@ data class AppSettings(
     val customClockFontPath: String? = null,
     val customDateFontPath: String? = null,
     val customBatteryFontPath: String? = null,
+    val customFonts: Set<String> = emptySet(),
 )

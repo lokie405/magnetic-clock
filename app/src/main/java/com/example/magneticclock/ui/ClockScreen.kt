@@ -35,34 +35,6 @@ import java.util.*
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.delay
 
-val provider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs
-)
-
-fun getFontFamily(fontName: String, customPath: String?): FontFamily {
-    if (!customPath.isNullOrEmpty()) {
-        try {
-            val file = File(customPath)
-            if (file.exists()) {
-                return FontFamily(Typeface.createFromFile(file))
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-    
-    if (fontName == "Default") return FontFamily.Default
-    
-    val font = GoogleFont(fontName)
-    return FontFamily(
-        Font(googleFont = font, fontProvider = provider)
-    )
-}
-
-val availableFonts = listOf("Default", "Roboto", "Montserrat", "Playfair Display")
-
 @Composable
 fun ClockScreen(
     settings: AppSettings,

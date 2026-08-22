@@ -31,6 +31,7 @@ class SettingsManager(private val context: Context) {
         val CUSTOM_CLOCK_FONT = stringPreferencesKey("custom_clock_font")
         val CUSTOM_DATE_FONT = stringPreferencesKey("custom_date_font")
         val CUSTOM_BATTERY_FONT = stringPreferencesKey("custom_battery_font")
+        val CUSTOM_FONTS = stringSetPreferencesKey("custom_fonts")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
@@ -55,6 +56,7 @@ class SettingsManager(private val context: Context) {
             customClockFontPath = preferences[Keys.CUSTOM_CLOCK_FONT],
             customDateFontPath = preferences[Keys.CUSTOM_DATE_FONT],
             customBatteryFontPath = preferences[Keys.CUSTOM_BATTERY_FONT],
+            customFonts = preferences[Keys.CUSTOM_FONTS] ?: emptySet(),
         )
     }
 
@@ -83,6 +85,7 @@ class SettingsManager(private val context: Context) {
                 ?: preferences.remove(Keys.CUSTOM_DATE_FONT)
             settings.customBatteryFontPath?.let { preferences[Keys.CUSTOM_BATTERY_FONT] = it } 
                 ?: preferences.remove(Keys.CUSTOM_BATTERY_FONT)
+            preferences[Keys.CUSTOM_FONTS] = settings.customFonts
         }
     }
 }
