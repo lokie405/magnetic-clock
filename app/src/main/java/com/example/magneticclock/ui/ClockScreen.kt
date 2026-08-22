@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.BrightnessLow
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Thunderstorm
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbCloudy
@@ -46,6 +47,7 @@ fun ClockScreen(
     batteryLevel: Int,
     magnitude: Float,
     weather: WeatherData?,
+    speed: Float,
     onSettingsChanged: (AppSettings) -> Unit,
     onHotspotToggle: () -> Unit,
     onPowerOff: () -> Unit,
@@ -53,10 +55,17 @@ fun ClockScreen(
 ) {
     val context = LocalContext.current
     var currentTime by remember { mutableStateOf(Calendar.getInstance().time) }
+    var offset by remember { mutableStateOf(androidx.compose.ui.unit.IntOffset(0, 0)) }
     
     LaunchedEffect(Unit) {
         while (true) {
             currentTime = Calendar.getInstance().time
+            // Burn-in protection: shift by -3 to 3 pixels every minute
+            val random = Random()
+            offset = androidx.compose.ui.unit.IntOffset(
+                x = random.nextInt(7) - 3,
+                y = random.nextInt(7) - 3
+            )
             delay(1.seconds)
         }
     }
@@ -69,10 +78,11 @@ fun ClockScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
+            .offset { offset }
             .clickable { onClose() },
         contentAlignment = Alignment.Center,
     ) {
-        if (settings.showWeather && weather != null) {
+        if ((settings.showWeather) && (weather != null)) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -83,7 +93,7 @@ fun ClockScreen(
                     imageVector = getWeatherIcon(weather.weatherCode),
                     contentDescription = "Weather",
                     tint = getWeatherColor(weather.weatherCode),
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(32.dp),
                 )
                 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -192,6 +202,26 @@ fun ClockScreen(
                 ),
             )
 
+            if (settings.showSpeed) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Speed,
+                        contentDescription = "Speed",
+                        tint = Color(0xFF00E676), // Bright Green
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "${speed.toInt()} km/h",
+                        color = contentColor,
+                        fontSize = settings.speedSizeSp.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath)
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
 
             // Battery and Hotspot
@@ -263,12 +293,6 @@ fun ClockScreen(
                     )
                 } else {
                     Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = "Auto-Brightness Active",
-                        color = secondaryColor,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(end = 8.dp),
-                    )
                 }
 
                 IconButton(

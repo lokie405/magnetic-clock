@@ -34,6 +34,8 @@ class SettingsManager(private val context: Context) {
         val CUSTOM_FONTS = stringSetPreferencesKey("custom_fonts")
         val SHOW_MAGNETIC_FIELD = booleanPreferencesKey("show_magnetic_field")
         val SHOW_WEATHER = booleanPreferencesKey("show_weather")
+        val SHOW_SPEED = booleanPreferencesKey("show_speed")
+        val SPEED_SIZE = intPreferencesKey("speed_size")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
@@ -61,6 +63,8 @@ class SettingsManager(private val context: Context) {
             customFonts = preferences[Keys.CUSTOM_FONTS] ?: emptySet(),
             showMagneticField = preferences[Keys.SHOW_MAGNETIC_FIELD] ?: false,
             showWeather = preferences[Keys.SHOW_WEATHER] ?: false,
+            showSpeed = preferences[Keys.SHOW_SPEED] ?: false,
+            speedSizeSp = preferences[Keys.SPEED_SIZE] ?: 24,
         )
     }
 
@@ -92,6 +96,8 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.CUSTOM_FONTS] = settings.customFonts
             preferences[Keys.SHOW_MAGNETIC_FIELD] = settings.showMagneticField
             preferences[Keys.SHOW_WEATHER] = settings.showWeather
+            preferences[Keys.SHOW_SPEED] = settings.showSpeed
+            preferences[Keys.SPEED_SIZE] = settings.speedSizeSp
         }
     }
 }

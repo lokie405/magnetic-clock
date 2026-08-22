@@ -6,6 +6,9 @@ import android.os.BatteryManager
 import android.os.Bundle
 import android.provider.Settings
 import android.view.WindowManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
@@ -24,6 +27,18 @@ class ClockActivity : ComponentActivity() {
     private lateinit var weatherManager: WeatherManager
     private var currentMagnitude = mutableFloatStateOf(0f)
     private var weatherData = mutableStateOf<WeatherData?>(null)
+    private var currentSpeed = mutableFloatStateOf(0f)
+
+    private val locationListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            // speed is in m/s, convert to km/h
+            currentSpeed.floatValue = location.speed * 3.6f
+        }
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) {}
+        @Deprecated("Deprecated in Java")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+    }
 
     private val closeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -105,11 +120,31 @@ class ClockActivity : ComponentActivity() {
                 }
             }
 
+            LaunchedEffect(settingsState.showSpeed) {
+                val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+                if (settingsState.showSpeed) {
+                    try {
+                        locationManager.requestLocationUpdates(
+                            LocationManager.GPS_PROVIDER,
+                            1000L,
+                            1f,
+                            locationListener
+                        )
+                    } catch (e: SecurityException) {
+                        // Permission not granted
+                    }
+                } else {
+                    locationManager.removeUpdates(locationListener)
+                    currentSpeed.floatValue = 0f
+                }
+            }
+
             ClockScreen(
                 settings = settingsState,
                 batteryLevel = batteryLevel.intValue,
                 magnitude = currentMagnitude.floatValue,
                 weather = weatherData.value,
+                speed = currentSpeed.floatValue,
                 onSettingsChanged = { newSettings ->
                     scope.launch { settingsManager.updateSettings(newSettings) }
                 },
@@ -167,6 +202,8 @@ class ClockActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+        locationManager.removeUpdates(locationListener)
         unregisterReceiver(closeReceiver)
     }
 }

@@ -251,6 +251,7 @@ fun SettingsScreen(
                 SizeSlider("Clock Size", settings.clockSizeSp) { onSettingsChanged(settings.copy(clockSizeSp = it)) }
                 SizeSlider("Date Size", settings.dateSizeSp) { onSettingsChanged(settings.copy(dateSizeSp = it)) }
                 SizeSlider("Battery Size", settings.batterySizeSp) { onSettingsChanged(settings.copy(batterySizeSp = it)) }
+                SizeSlider("Speed Size", settings.speedSizeSp) { onSettingsChanged(settings.copy(speedSizeSp = it)) }
             }
             
             item {
@@ -295,6 +296,27 @@ fun SettingsScreen(
                                 )
                             }
                             onSettingsChanged(settings.copy(showWeather = it))
+                        },
+                    )
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Show Speed in Clock")
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = settings.showSpeed,
+                        onCheckedChange = {
+                            if (it) {
+                                locationPermissionLauncher.launch(
+                                    arrayOf(
+                                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                        android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    ),
+                                )
+                            }
+                            onSettingsChanged(settings.copy(showSpeed = it))
                         },
                     )
                 }

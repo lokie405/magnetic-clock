@@ -24,4 +24,6 @@ data class AppSettings(
     val customFonts: Set<String> = emptySet(),
     val showMagneticField: Boolean = false,
     val showWeather: Boolean = false,
+    val showSpeed: Boolean = false,
+    val speedSizeSp: Int = 24,
 )
