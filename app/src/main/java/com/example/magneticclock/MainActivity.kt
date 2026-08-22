@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.Manifest
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -123,6 +124,15 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions.values.all { it }
+        if (!granted) {
+            // Optional: Show message that weather needs location
+        }
+    }
+
     val fontPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
@@ -348,6 +358,27 @@ fun SettingsScreen(
                         checked = settings.showMagneticField,
                         onCheckedChange = {
                             onSettingsChanged(settings.copy(showMagneticField = it))
+                        },
+                    )
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Show Weather in Clock")
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = settings.showWeather,
+                        onCheckedChange = {
+                            if (it) {
+                                locationPermissionLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION
+                                    )
+                                )
+                            }
+                            onSettingsChanged(settings.copy(showWeather = it))
                         },
                     )
                 }

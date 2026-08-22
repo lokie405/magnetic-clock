@@ -1,6 +1,5 @@
 package com.example.magneticclock.ui
 
-import android.graphics.Typeface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,6 +8,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.BrightnessLow
+import androidx.compose.material.icons.filled.Thunderstorm
+import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.WbCloudy
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.*
@@ -17,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -29,6 +33,7 @@ import androidx.core.graphics.drawable.toBitmap
 import com.example.magneticclock.NotificationService
 import com.example.magneticclock.R
 import com.example.magneticclock.data.AppSettings
+import com.example.magneticclock.data.WeatherData
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -40,6 +45,7 @@ fun ClockScreen(
     settings: AppSettings,
     batteryLevel: Int,
     magnitude: Float,
+    weather: WeatherData?,
     onSettingsChanged: (AppSettings) -> Unit,
     onHotspotToggle: () -> Unit,
     onPowerOff: () -> Unit,
@@ -66,6 +72,31 @@ fun ClockScreen(
             .clickable { onClose() },
         contentAlignment = Alignment.Center,
     ) {
+        if (settings.showWeather && weather != null) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = getWeatherIcon(weather.weatherCode),
+                    contentDescription = "Weather",
+                    tint = getWeatherColor(weather.weatherCode),
+                    modifier = Modifier.size(32.dp)
+                )
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Text(
+                    text = "${weather.temperature.toInt()}°C",
+                    color = contentColor,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
         if (settings.showMagneticField) {
             Text(
                 text = "${"%.1f".format(magnitude)} µT",
@@ -254,5 +285,29 @@ fun ClockScreen(
                 }
             }
         }
+    }
+}
+
+private fun getWeatherIcon(code: Int): ImageVector {
+    return when (code) {
+        0 -> Icons.Default.WbSunny // Clear sky
+        1, 2, 3 -> Icons.Default.WbCloudy // Mainly clear, partly cloudy, and overcast
+        45, 48 -> Icons.Default.WbCloudy // Fog
+        51, 53, 55, 61, 63, 65, 80, 81, 82 -> Icons.Default.WaterDrop // Rain
+        71, 73, 75, 77, 85, 86 -> Icons.Default.WbCloudy // Snow (using cloudy as simple)
+        95, 96, 99 -> Icons.Default.Thunderstorm // Thunderstorm
+        else -> Icons.Default.WbCloudy
+    }
+}
+
+private fun getWeatherColor(code: Int): Color {
+    return when (code) {
+        0 -> Color(0xFFFFD600) // Bright Yellow for Sun
+        1, 2, 3 -> Color.Gray // Gray for clouds
+        45, 48 -> Color.LightGray // Light Gray for fog
+        51, 53, 55, 61, 63, 65, 80, 81, 82 -> Color(0xFF29B6F6) // Blue for Rain
+        71, 73, 75, 77, 85, 86 -> Color.White // White for Snow
+        95, 96, 99 -> Color(0xFFFFAB00) // Amber for Thunderstorm
+        else -> Color.Gray
     }
 }

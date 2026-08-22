@@ -11,13 +11,19 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.SettingsManager
+import com.example.magneticclock.data.WeatherData
+import com.example.magneticclock.data.WeatherManager
 import com.example.magneticclock.ui.ClockScreen
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.minutes
 
 class ClockActivity : ComponentActivity() {
 
     private lateinit var settingsManager: SettingsManager
+    private lateinit var weatherManager: WeatherManager
     private var currentMagnitude = mutableFloatStateOf(0f)
+    private var weatherData = mutableStateOf<WeatherData?>(null)
 
     private val closeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -55,6 +61,7 @@ class ClockActivity : ComponentActivity() {
         }
 
         settingsManager = SettingsManager(this)
+        weatherManager = WeatherManager(this)
 
         sendBroadcast(Intent("CLOCK_OPENED").apply { setPackage(packageName) })
         
@@ -89,10 +96,20 @@ class ClockActivity : ComponentActivity() {
                 updateBatteryLevel { batteryLevel.intValue = it }
             }
 
+            LaunchedEffect(settingsState.showWeather) {
+                if (settingsState.showWeather) {
+                    while (true) {
+                        weatherData.value = weatherManager.fetchWeather()
+                        delay(30.minutes)
+                    }
+                }
+            }
+
             ClockScreen(
                 settings = settingsState,
                 batteryLevel = batteryLevel.intValue,
                 magnitude = currentMagnitude.floatValue,
+                weather = weatherData.value,
                 onSettingsChanged = { newSettings ->
                     scope.launch { settingsManager.updateSettings(newSettings) }
                 },

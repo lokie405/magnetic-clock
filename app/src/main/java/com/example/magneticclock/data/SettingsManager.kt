@@ -33,6 +33,7 @@ class SettingsManager(private val context: Context) {
         val CUSTOM_BATTERY_FONT = stringPreferencesKey("custom_battery_font")
         val CUSTOM_FONTS = stringSetPreferencesKey("custom_fonts")
         val SHOW_MAGNETIC_FIELD = booleanPreferencesKey("show_magnetic_field")
+        val SHOW_WEATHER = booleanPreferencesKey("show_weather")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
@@ -59,6 +60,7 @@ class SettingsManager(private val context: Context) {
             customBatteryFontPath = preferences[Keys.CUSTOM_BATTERY_FONT],
             customFonts = preferences[Keys.CUSTOM_FONTS] ?: emptySet(),
             showMagneticField = preferences[Keys.SHOW_MAGNETIC_FIELD] ?: false,
+            showWeather = preferences[Keys.SHOW_WEATHER] ?: false,
         )
     }
 
@@ -89,6 +91,7 @@ class SettingsManager(private val context: Context) {
                 ?: preferences.remove(Keys.CUSTOM_BATTERY_FONT)
             preferences[Keys.CUSTOM_FONTS] = settings.customFonts
             preferences[Keys.SHOW_MAGNETIC_FIELD] = settings.showMagneticField
+            preferences[Keys.SHOW_WEATHER] = settings.showWeather
         }
     }
 }

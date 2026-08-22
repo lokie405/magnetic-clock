@@ -23,4 +23,5 @@ data class AppSettings(
     val customBatteryFontPath: String? = null,
     val customFonts: Set<String> = emptySet(),
     val showMagneticField: Boolean = false,
+    val showWeather: Boolean = false,
 )
