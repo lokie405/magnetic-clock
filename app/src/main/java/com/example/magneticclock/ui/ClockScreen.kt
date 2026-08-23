@@ -60,14 +60,21 @@ fun ClockScreen(
     var offset by remember { mutableStateOf(androidx.compose.ui.unit.IntOffset(0, 0)) }
     
     LaunchedEffect(Unit) {
+        var lastMinute = -1
         while (true) {
-            currentTime = Calendar.getInstance().time
-            // Burn-in protection: shift by -3 to 3 pixels every minute
-            val random = Random()
-            offset = androidx.compose.ui.unit.IntOffset(
-                x = random.nextInt(7) - 3,
-                y = random.nextInt(7) - 3
-            )
+            val now = Calendar.getInstance()
+            currentTime = now.time
+            
+            val currentMin = now.get(Calendar.MINUTE)
+            if (currentMin != lastMinute) {
+                // Burn-in protection: shift by -3 to 3 pixels only once per minute
+                val random = Random()
+                offset = androidx.compose.ui.unit.IntOffset(
+                    x = random.nextInt(7) - 3,
+                    y = random.nextInt(7) - 3
+                )
+                lastMinute = currentMin
+            }
             delay(1.seconds)
         }
     }
