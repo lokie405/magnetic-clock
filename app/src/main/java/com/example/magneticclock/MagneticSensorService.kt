@@ -119,7 +119,7 @@ class MagneticSensorService : Service(), SensorEventListener {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
         proximitySensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST)
         }
     }
 
@@ -172,12 +172,20 @@ class MagneticSensorService : Service(), SensorEventListener {
     private fun checkTrigger(magnitude: Float) {
         if (!isClockActive) {
             // Logic for Activation
-            val isProximityFar = !currentSettings.useProximitySensor || 
-                                proximitySensor == null || 
-                                (lastProximityValue > 0) || 
-                                (lastProximityValue == -1f) // Wait for first reading or ignore if no sensor
+            // Proximity sensor: 0 usually means "Near", >0 means "Far"
+            // If settings is ON, we only allow activation if sensor explicitly says "Far" (> 0)
+            val isProximityNear = currentSettings.useProximitySensor && 
+                                proximitySensor != null && 
+                                (lastProximityValue >= 0f && lastProximityValue < 1.0f)
+            
+            val isProximityUnknown = currentSettings.useProximitySensor && 
+                                   proximitySensor != null && 
+                                   lastProximityValue == -1f
 
-            if (magnitude >= currentSettings.activationThreshold && isProximityFar) {
+            // Block if Near OR if we haven't received a value yet (safety first)
+            val isBlockedByProximity = isProximityNear || isProximityUnknown
+
+            if (magnitude >= currentSettings.activationThreshold && !isBlockedByProximity) {
                 deactivationStartTime = 0
                 if (activationStartTime == 0L) {
                     activationStartTime = System.currentTimeMillis()
