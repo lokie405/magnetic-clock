@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.Speed
@@ -27,7 +28,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,7 +68,7 @@ fun ClockScreen(
             val now = Calendar.getInstance()
             currentTime = now.time
             
-            val currentMin = now.get(Calendar.MINUTE)
+            val currentMin = now[Calendar.MINUTE]
             if (currentMin != lastMinute) {
                 // Burn-in protection: shift by -3 to 3 pixels only once per minute
                 val random = Random()
@@ -160,7 +160,7 @@ fun ClockScreen(
                 fontSize = 12.sp,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(16.dp)
+                    .padding(16.dp),
             )
         }
 
@@ -244,6 +244,7 @@ fun ClockScreen(
                 style = TextStyle(
                     color = secondaryColor,
                     fontSize = settings.dateSizeSp.sp,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = getFontFamily(settings.dateFont, settings.customDateFontPath),
                 ),
             )
@@ -280,11 +281,21 @@ fun ClockScreen(
                     else -> Color.Red
                 }
 
+                Icon(
+                    imageVector = Icons.Default.BatteryFull,
+                    contentDescription = "Battery",
+                    tint = batteryColor,
+                    modifier = Modifier.size(settings.batterySizeSp.dp * 1.2f)
+                )
+
+                Spacer(modifier = Modifier.width(4.dp))
+
                 Text(
                     text = "$batteryLevel%",
                     style = TextStyle(
                         color = batteryColor,
                         fontSize = settings.batterySizeSp.sp,
+                        fontWeight = FontWeight.Bold,
                         fontFamily = getFontFamily(settings.batteryFont, settings.customBatteryFontPath),
                     ),
                 )
