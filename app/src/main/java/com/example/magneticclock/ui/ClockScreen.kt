@@ -2,6 +2,7 @@ package com.example.magneticclock.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -52,6 +54,7 @@ fun ClockScreen(
     phoneTemp: Float,
     onSettingsChanged: (AppSettings) -> Unit,
     onHotspotToggle: () -> Unit,
+    onDoubleTap: () -> Unit,
     onPowerOff: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -88,7 +91,12 @@ fun ClockScreen(
             .fillMaxSize()
             .background(backgroundColor)
             .offset { offset }
-            .clickable { onClose() },
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClose() },
+                    onDoubleTap = { onDoubleTap() }
+                )
+            },
         contentAlignment = Alignment.Center,
     ) {
         if (settings.showPhoneTemperature) {

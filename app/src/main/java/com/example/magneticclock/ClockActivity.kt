@@ -166,6 +166,16 @@ class ClockActivity : ComponentActivity() {
                     scope.launch { settingsManager.updateSettings(newSettings) }
                 },
                 onHotspotToggle = { toggleHotspot() },
+                onDoubleTap = {
+                    val intent = Intent(Intent.ACTION_VOICE_COMMAND).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    try {
+                        startActivity(intent)
+                    } catch (_: Exception) {
+                        // Voice command not supported or no assistant found
+                    }
+                },
                 onPowerOff = {
                     scope.launch {
                         sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })
