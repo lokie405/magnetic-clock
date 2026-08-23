@@ -36,6 +36,7 @@ class SettingsManager(private val context: Context) {
         val SHOW_WEATHER = booleanPreferencesKey("show_weather")
         val SHOW_SPEED = booleanPreferencesKey("show_speed")
         val SPEED_SIZE = intPreferencesKey("speed_size")
+        val SHOW_PHONE_TEMPERATURE = booleanPreferencesKey("show_phone_temperature")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
@@ -65,6 +66,7 @@ class SettingsManager(private val context: Context) {
             showWeather = preferences[Keys.SHOW_WEATHER] ?: false,
             showSpeed = preferences[Keys.SHOW_SPEED] ?: false,
             speedSizeSp = preferences[Keys.SPEED_SIZE] ?: 24,
+            showPhoneTemperature = preferences[Keys.SHOW_PHONE_TEMPERATURE] ?: false,
         )
     }
 
@@ -98,6 +100,7 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.SHOW_WEATHER] = settings.showWeather
             preferences[Keys.SHOW_SPEED] = settings.showSpeed
             preferences[Keys.SPEED_SIZE] = settings.speedSizeSp
+            preferences[Keys.SHOW_PHONE_TEMPERATURE] = settings.showPhoneTemperature
         }
     }
 }

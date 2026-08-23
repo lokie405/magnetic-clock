@@ -26,4 +26,5 @@ data class AppSettings(
     val showWeather: Boolean = false,
     val showSpeed: Boolean = false,
     val speedSizeSp: Int = 24,
+    val showPhoneTemperature: Boolean = false,
 )

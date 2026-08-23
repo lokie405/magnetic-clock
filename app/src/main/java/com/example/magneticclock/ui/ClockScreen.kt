@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Thunderstorm
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.WbCloudy
@@ -48,6 +49,7 @@ fun ClockScreen(
     magnitude: Float,
     weather: WeatherData?,
     speed: Float,
+    phoneTemp: Float,
     onSettingsChanged: (AppSettings) -> Unit,
     onHotspotToggle: () -> Unit,
     onPowerOff: () -> Unit,
@@ -82,6 +84,35 @@ fun ClockScreen(
             .clickable { onClose() },
         contentAlignment = Alignment.Center,
     ) {
+        if (settings.showPhoneTemperature) {
+            val tempColor = when {
+                phoneTemp < 38f -> Color(0xFF00E676) // Green
+                phoneTemp < 45f -> Color(0xFFFFD600) // Yellow
+                else -> Color.Red
+            }
+            
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Thermostat,
+                    contentDescription = "Phone Temperature",
+                    tint = tempColor,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "${"%.1f".format(phoneTemp)}°C",
+                    color = tempColor,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
         if ((settings.showWeather) && (weather != null)) {
             Row(
                 modifier = Modifier

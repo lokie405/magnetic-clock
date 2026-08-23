@@ -242,7 +242,7 @@ fun SettingsScreen(
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
-                    }
+                    },
                 )
             }
 
@@ -317,6 +317,19 @@ fun SettingsScreen(
                                 )
                             }
                             onSettingsChanged(settings.copy(showSpeed = it))
+                        },
+                    )
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Show Phone Temperature")
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = settings.showPhoneTemperature,
+                        onCheckedChange = {
+                            onSettingsChanged(settings.copy(showPhoneTemperature = it))
                         },
                     )
                 }

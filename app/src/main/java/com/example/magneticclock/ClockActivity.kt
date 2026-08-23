@@ -28,6 +28,24 @@ class ClockActivity : ComponentActivity() {
     private var currentMagnitude = mutableFloatStateOf(0f)
     private var weatherData = mutableStateOf<WeatherData?>(null)
     private var currentSpeed = mutableFloatStateOf(0f)
+    private var phoneTemperature = mutableFloatStateOf(0f)
+    private var batteryLevel = mutableIntStateOf(0)
+
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                if ((level != -1) && (scale != -1)) {
+                    batteryLevel.intValue = ((level * 100) / scale.toFloat()).toInt()
+                }
+                
+                // Temperature is in tenths of a degree Celsius
+                val temp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
+                phoneTemperature.floatValue = temp / 10f
+            }
+        }
+    }
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
@@ -80,6 +98,9 @@ class ClockActivity : ComponentActivity() {
 
         sendBroadcast(Intent("CLOCK_OPENED").apply { setPackage(packageName) })
         
+        val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        registerReceiver(batteryReceiver, batteryFilter)
+        
         ContextCompat.registerReceiver(
             this,
             closeReceiver,
@@ -87,13 +108,12 @@ class ClockActivity : ComponentActivity() {
                 addAction("CLOSE_CLOCK_ACTIVITY")
                 addAction("MAGNETIC_FIELD_UPDATE")
             },
-            ContextCompat.RECEIVER_NOT_EXPORTED
+            ContextCompat.RECEIVER_NOT_EXPORTED,
         )
 
         setContent {
             val scope = rememberCoroutineScope()
             val settingsState by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
-            val batteryLevel = remember { mutableIntStateOf(0) }
             
             // Apply brightness settings to the window
             LaunchedEffect(settingsState.isAutoBrightness, settingsState.brightness) {
@@ -105,10 +125,6 @@ class ClockActivity : ComponentActivity() {
                     lp.screenBrightness = settingsState.brightness.coerceIn(0.01f, 1.0f)
                 }
                 window.attributes = lp
-            }
-
-            LaunchedEffect(Unit) {
-                updateBatteryLevel { batteryLevel.intValue = it }
             }
 
             LaunchedEffect(settingsState.showWeather) {
@@ -128,7 +144,7 @@ class ClockActivity : ComponentActivity() {
                             LocationManager.GPS_PROVIDER,
                             1000L,
                             1f,
-                            locationListener
+                            locationListener,
                         )
                     } catch (e: SecurityException) {
                         // Permission not granted
@@ -145,6 +161,7 @@ class ClockActivity : ComponentActivity() {
                 magnitude = currentMagnitude.floatValue,
                 weather = weatherData.value,
                 speed = currentSpeed.floatValue,
+                phoneTemp = phoneTemperature.floatValue,
                 onSettingsChanged = { newSettings ->
                     scope.launch { settingsManager.updateSettings(newSettings) }
                 },
@@ -159,18 +176,8 @@ class ClockActivity : ComponentActivity() {
                 onClose = { 
                     sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })
                     finish() 
-                }
+                },
             )
-        }
-    }
-
-    private fun updateBatteryLevel(onResult: (Int) -> Unit) {
-        val intentFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        val batteryStatus = registerReceiver(null, intentFilter)
-        val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-        val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-        if (level != -1 && (scale != -1)) {
-            onResult((level * 100 / scale.toFloat()).toInt())
         }
     }
 
@@ -194,7 +201,7 @@ class ClockActivity : ComponentActivity() {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
                 return
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Continue to next intent
             }
         }
@@ -205,5 +212,6 @@ class ClockActivity : ComponentActivity() {
         val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
         locationManager.removeUpdates(locationListener)
         unregisterReceiver(closeReceiver)
+        unregisterReceiver(batteryReceiver)
     }
 }
