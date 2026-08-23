@@ -334,6 +334,21 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Pocket Protection", fontWeight = FontWeight.Bold)
+                        Text("Use proximity sensor to prevent accidental activation", fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = settings.useProximitySensor,
+                        onCheckedChange = {
+                            onSettingsChanged(settings.copy(useProximitySensor = it))
+                        },
+                    )
+                }
+            }
         }
     }
 }

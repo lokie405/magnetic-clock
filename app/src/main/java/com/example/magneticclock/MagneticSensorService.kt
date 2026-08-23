@@ -21,6 +21,7 @@ class MagneticSensorService : Service(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
     private var magneticSensor: Sensor? = null
+    private var proximitySensor: Sensor? = null
     private lateinit var settingsManager: SettingsManager
     private var currentSettings = AppSettings()
     private var vibrator: Vibrator? = null
@@ -29,6 +30,7 @@ class MagneticSensorService : Service(), SensorEventListener {
     private var activationStartTime: Long = 0
     private var deactivationStartTime: Long = 0
     private var isClockActive = false
+    private var lastProximityValue: Float = -1f
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return START_STICKY
@@ -55,6 +57,7 @@ class MagneticSensorService : Service(), SensorEventListener {
         super.onCreate()
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         magneticSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        proximitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
         settingsManager = SettingsManager(this)
         
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -109,6 +112,9 @@ class MagneticSensorService : Service(), SensorEventListener {
         magneticSensor?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
+        proximitySensor?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
     }
 
     private fun unregisterSensor() {
@@ -137,7 +143,9 @@ class MagneticSensorService : Service(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_MAGNETIC_FIELD) {
+        if (event == null) return
+        
+        if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
             val x = event.values[0]
             val y = event.values[1]
             val z = event.values[2]
@@ -150,13 +158,20 @@ class MagneticSensorService : Service(), SensorEventListener {
             sendBroadcast(intent)
 
             checkTrigger(magnitude)
+        } else if (event.sensor.type == Sensor.TYPE_PROXIMITY) {
+            lastProximityValue = event.values[0]
         }
     }
 
     private fun checkTrigger(magnitude: Float) {
         if (!isClockActive) {
             // Logic for Activation
-            if (magnitude >= currentSettings.activationThreshold) {
+            val isProximityFar = !currentSettings.useProximitySensor || 
+                                proximitySensor == null || 
+                                (lastProximityValue > 0) || 
+                                (lastProximityValue == -1f) // Wait for first reading or ignore if no sensor
+
+            if (magnitude >= currentSettings.activationThreshold && isProximityFar) {
                 deactivationStartTime = 0
                 if (activationStartTime == 0L) {
                     activationStartTime = System.currentTimeMillis()

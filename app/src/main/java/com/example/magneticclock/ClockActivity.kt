@@ -82,7 +82,6 @@ class ClockActivity : ComponentActivity() {
         
         // Window flags for AOD behavior
         window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
             WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
@@ -125,6 +124,15 @@ class ClockActivity : ComponentActivity() {
                     lp.screenBrightness = settingsState.brightness.coerceIn(0.01f, 1.0f)
                 }
                 window.attributes = lp
+            }
+
+            // Automatic screen on/off based on battery level
+            LaunchedEffect(batteryLevel.intValue) {
+                if (batteryLevel.intValue > 20) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
             }
 
             LaunchedEffect(settingsState.showWeather) {

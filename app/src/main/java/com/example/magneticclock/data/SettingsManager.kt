@@ -37,6 +37,7 @@ class SettingsManager(private val context: Context) {
         val SHOW_SPEED = booleanPreferencesKey("show_speed")
         val SPEED_SIZE = intPreferencesKey("speed_size")
         val SHOW_PHONE_TEMPERATURE = booleanPreferencesKey("show_phone_temperature")
+        val USE_PROXIMITY_SENSOR = booleanPreferencesKey("use_proximity_sensor")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
@@ -67,6 +68,7 @@ class SettingsManager(private val context: Context) {
             showSpeed = preferences[Keys.SHOW_SPEED] ?: false,
             speedSizeSp = preferences[Keys.SPEED_SIZE] ?: 24,
             showPhoneTemperature = preferences[Keys.SHOW_PHONE_TEMPERATURE] ?: false,
+            useProximitySensor = preferences[Keys.USE_PROXIMITY_SENSOR] ?: true,
         )
     }
 
@@ -101,6 +103,7 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.SHOW_SPEED] = settings.showSpeed
             preferences[Keys.SPEED_SIZE] = settings.speedSizeSp
             preferences[Keys.SHOW_PHONE_TEMPERATURE] = settings.showPhoneTemperature
+            preferences[Keys.USE_PROXIMITY_SENSOR] = settings.useProximitySensor
         }
     }
 }
