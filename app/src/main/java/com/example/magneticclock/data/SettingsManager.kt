@@ -42,6 +42,7 @@ class SettingsManager(private val context: Context) {
         val SHOW_TRIP_TIME = booleanPreferencesKey("show_trip_time")
         val SHOW_TRIP_DISTANCE = booleanPreferencesKey("show_trip_distance")
         val TRIP_LOG_DWELL_MINUTES = intPreferencesKey("trip_log_dwell_minutes")
+        val SETTINGS_RETURN_DELAY = floatPreferencesKey("settings_return_delay")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
@@ -77,6 +78,7 @@ class SettingsManager(private val context: Context) {
             showTripTime = preferences[Keys.SHOW_TRIP_TIME] ?: false,
             showTripDistance = preferences[Keys.SHOW_TRIP_DISTANCE] ?: false,
             tripLogDwellMinutes = preferences[Keys.TRIP_LOG_DWELL_MINUTES] ?: 15,
+            settingsReturnDelaySeconds = preferences[Keys.SETTINGS_RETURN_DELAY] ?: 5.0f,
         )
     }
 
@@ -116,6 +118,7 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.SHOW_TRIP_TIME] = settings.showTripTime
             preferences[Keys.SHOW_TRIP_DISTANCE] = settings.showTripDistance
             preferences[Keys.TRIP_LOG_DWELL_MINUTES] = settings.tripLogDwellMinutes
+            preferences[Keys.SETTINGS_RETURN_DELAY] = settings.settingsReturnDelaySeconds
         }
     }
 }

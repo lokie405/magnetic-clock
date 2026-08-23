@@ -32,4 +32,5 @@ data class AppSettings(
     val showTripTime: Boolean = false,
     val showTripDistance: Boolean = false,
     val tripLogDwellMinutes: Int = 15,
+    val settingsReturnDelaySeconds: Float = 5.0f,
 )

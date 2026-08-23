@@ -497,6 +497,25 @@ fun SettingsScreen(
 
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.SettingsBackupRestore, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Auto-Return to Clock Delay", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Text("${"%.1f".format(settings.settingsReturnDelaySeconds)} seconds", fontSize = 12.sp, modifier = Modifier.padding(start = 32.dp))
+                Slider(
+                    value = settings.settingsReturnDelaySeconds,
+                    onValueChange = { 
+                        val rounded = (it * 2).toInt() / 2.0f
+                        onSettingsChanged(settings.copy(settingsReturnDelaySeconds = rounded.coerceIn(1f, 10f))) 
+                    },
+                    valueRange = 1f..10f,
+                    steps = 17,
+                    modifier = Modifier.padding(start = 32.dp)
+                )
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(12.dp))
                     Text("Show Trip Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)

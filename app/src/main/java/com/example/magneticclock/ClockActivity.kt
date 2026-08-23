@@ -181,6 +181,13 @@ class ClockActivity : ComponentActivity() {
                 onDismissResume = {
                     TripManager.dismissResume()
                 },
+                onSettingsClick = {
+                    val intent = Intent(this@ClockActivity, MainActivity::class.java).apply {
+                        putExtra("from_clock", true)
+                        addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    }
+                    startActivity(intent)
+                },
                 onHotspotToggle = { toggleHotspot() },
                 onDoubleTap = {
                     val intent = Intent(Intent.ACTION_VOICE_COMMAND).apply {

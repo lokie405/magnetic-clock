@@ -5,14 +5,19 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.core.content.ContextCompat
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.JournalManager
 import com.example.magneticclock.data.SettingsManager
 import com.example.magneticclock.ui.JournalScreen
 import com.example.magneticclock.ui.SettingsScreen
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -20,6 +25,22 @@ class MainActivity : ComponentActivity() {
     private lateinit var settingsManager: SettingsManager
     private var currentMagnitude = mutableFloatStateOf(0f)
     private var currentScreen = mutableStateOf("settings") // "settings" or "journal"
+    
+    private var lastInteractionTime = mutableLongStateOf(System.currentTimeMillis())
+    private var isFromClock = mutableStateOf(false)
+
+    private fun updateInteractionTime() {
+        lastInteractionTime.longValue = System.currentTimeMillis()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        isFromClock.value = intent.getBooleanExtra("from_clock", false)
+        if (isFromClock.value) {
+            updateInteractionTime()
+        }
+    }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -42,6 +63,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settingsManager = SettingsManager(this)
+        
+        isFromClock.value = intent.getBooleanExtra("from_clock", false)
 
         val serviceIntent = Intent(this, MagneticSensorService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -66,6 +89,13 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             val settingsState = settingsManager.settingsFlow.collectAsState(initial = AppSettings())
             
+            if (isFromClock.value) {
+                LaunchedEffect(lastInteractionTime.longValue) {
+                    delay((settingsState.value.settingsReturnDelaySeconds * 1000).toLong())
+                    finish()
+                }
+            }
+
             // Initialize Mock Data (Force recreation with new format)
             LaunchedEffect(Unit) {
                 JournalManager.generateMockData(this@MainActivity)
@@ -74,21 +104,41 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(
                 colorScheme = if (settingsState.value.isDarkMode) darkColorScheme() else lightColorScheme(),
             ) {
-                Surface(color = MaterialTheme.colorScheme.background) {
+                Surface(
+                    color = MaterialTheme.colorScheme.background,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    awaitPointerEvent(PointerEventPass.Initial)
+                                    updateInteractionTime()
+                                }
+                            }
+                        }
+                ) {
                     if (currentScreen.value == "journal") {
-                        JournalScreen(onBack = { currentScreen.value = "settings" })
+                        JournalScreen(onBack = { 
+                            currentScreen.value = "settings"
+                            updateInteractionTime()
+                        })
                     } else {
                         SettingsScreen(
                             settings = settingsState.value,
                             magnitude = currentMagnitude.floatValue,
                             onSettingsChanged = { newSettings ->
+                                updateInteractionTime()
                                 scope.launch { settingsManager.updateSettings(newSettings) }
                             },
                             onPreviewClick = {
-                                val intent = Intent(this@MainActivity, ClockActivity::class.java)
-                                startActivity(intent)
+                                if (isFromClock.value) finish()
+                                else {
+                                    val intent = Intent(this@MainActivity, ClockActivity::class.java)
+                                    startActivity(intent)
+                                }
                             },
                             onViewJournal = {
+                                updateInteractionTime()
                                 currentScreen.value = "journal"
                             }
                         )

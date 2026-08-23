@@ -48,6 +48,7 @@ fun ClockScreen(
     onSettingsChanged: (AppSettings) -> Unit,
     onResumeTrip: () -> Unit,
     onDismissResume: () -> Unit,
+    onSettingsClick: () -> Unit,
     onHotspotToggle: () -> Unit,
     onDoubleTap: () -> Unit,
     onPowerOff: () -> Unit,
@@ -86,13 +87,13 @@ fun ClockScreen(
             .offset { offset }
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { onClose() },
+                    onTap = { onSettingsClick() },
                     onDoubleTap = { onDoubleTap() }
                 )
             },
         contentAlignment = Alignment.Center,
     ) {
-        // OVERLAYS (Corner Info)
+        // OVERLAYS (Status Bar Info)
         // Top Start: Weather
         if ((settings.showWeather) && (weather != null)) {
             Row(
@@ -117,15 +118,43 @@ fun ClockScreen(
             }
         }
 
-        // Top End: Magnetic Field
+        // Top Center: Magnetic Field
         if (settings.showMagneticField) {
             Text(
                 text = "${"%.1f".format(magnitude)} µT",
                 color = secondaryColor,
-                fontSize = 12.sp,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(24.dp),
+                    .align(Alignment.TopCenter)
+                    .padding(top = 48.dp),
+            )
+        }
+
+        // Top End: Battery
+        val batteryColor = when {
+            batteryLevel > 60 -> if (settings.isDarkMode) Color.Green else Color(0xFF388E3C)
+            batteryLevel > 20 -> if (settings.isDarkMode) Color.Yellow else Color(0xFFFBC02D)
+            else -> Color.Red
+        }
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "$batteryLevel%",
+                color = batteryColor,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Default.BatteryFull,
+                contentDescription = "Battery",
+                tint = batteryColor,
+                modifier = Modifier.size(24.dp)
             )
         }
 
@@ -182,20 +211,38 @@ fun ClockScreen(
         when (settings.layoutIndex) {
             1 -> SpeedFocusLayout(
                 settings = settings,
-                batteryLevel = batteryLevel,
                 currentTime = currentTime,
                 speed = speed,
                 tripStartTime = tripStartTime,
                 tripDistance = tripDistance,
                 contentColor = contentColor,
                 secondaryColor = secondaryColor,
+                onHotspotToggle = onHotspotToggle,
+                onPowerOff = onPowerOff,
                 onSettingsChanged = onSettingsChanged
             )
-            2 -> BigDigitalLayout(settings, batteryLevel, currentTime, speed, contentColor, onSettingsChanged)
-            3 -> MinimalistLayout(settings, batteryLevel, currentTime, speed, contentColor, secondaryColor)
-            else -> ClassicLayout(
+            2 -> BigDigitalLayout(
+                settings = settings,
+                currentTime = currentTime,
+                speed = speed,
+                contentColor = contentColor,
+                onHotspotToggle = onHotspotToggle,
+                onPowerOff = onPowerOff,
+                onSettingsChanged = onSettingsChanged
+            )
+            3 -> MinimalistLayout(
                 settings = settings,
                 batteryLevel = batteryLevel,
+                currentTime = currentTime,
+                speed = speed,
+                contentColor = contentColor,
+                secondaryColor = secondaryColor,
+                onHotspotToggle = onHotspotToggle,
+                onPowerOff = onPowerOff,
+                onSettingsChanged = onSettingsChanged
+            )
+            else -> ClassicLayout(
+                settings = settings,
                 currentTime = currentTime,
                 speed = speed,
                 tripStartTime = tripStartTime,
@@ -221,7 +268,7 @@ fun TripResumePanel(
     
     LaunchedEffect(Unit) {
         while (timeLeft > 0) {
-            delay(1000)
+            delay(1.seconds)
             timeLeft--
         }
         onDeny()
@@ -276,7 +323,6 @@ fun TripResumePanel(
 @Composable
 fun ClassicLayout(
     settings: AppSettings,
-    batteryLevel: Int,
     currentTime: Date,
     speed: Float,
     tripStartTime: Long,
@@ -339,22 +385,32 @@ fun ClassicLayout(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
-        BatteryHotspotRow(settings, batteryLevel, contentColor, onHotspotToggle, onPowerOff)
-        Spacer(modifier = Modifier.height(16.dp))
-        BrightnessControlRow(settings, contentColor, onSettingsChanged)
+        ControlButtonsRow(settings, contentColor, onHotspotToggle, onPowerOff, onSettingsChanged)
+        
+        AnimatedVisibility(
+            visible = !settings.isAutoBrightness,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column {
+                Spacer(modifier = Modifier.height(16.dp))
+                BrightnessSliderOnly(settings, contentColor, onSettingsChanged)
+            }
+        }
     }
 }
 
 @Composable
 fun SpeedFocusLayout(
     settings: AppSettings,
-    batteryLevel: Int,
     currentTime: Date,
     speed: Float,
     tripStartTime: Long,
     tripDistance: Double,
     contentColor: Color,
     secondaryColor: Color,
+    onHotspotToggle: () -> Unit,
+    onPowerOff: () -> Unit,
     onSettingsChanged: (AppSettings) -> Unit
 ) {
     Column(
@@ -419,21 +475,30 @@ fun SpeedFocusLayout(
             }
         }
         
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        BatteryInfoSmall(batteryLevel)
-        Spacer(modifier = Modifier.height(24.dp))
-        BrightnessControlRow(settings, contentColor, onSettingsChanged)
+        Spacer(modifier = Modifier.height(16.dp))
+        ControlButtonsRow(settings, contentColor, onHotspotToggle, onPowerOff, onSettingsChanged)
+
+        AnimatedVisibility(
+            visible = !settings.isAutoBrightness,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column {
+                Spacer(modifier = Modifier.height(16.dp))
+                BrightnessSliderOnly(settings, contentColor, onSettingsChanged)
+            }
+        }
     }
 }
 
 @Composable
 fun BigDigitalLayout(
     settings: AppSettings,
-    batteryLevel: Int,
     currentTime: Date,
     speed: Float,
     contentColor: Color,
+    onHotspotToggle: () -> Unit,
+    onPowerOff: () -> Unit,
     onSettingsChanged: (AppSettings) -> Unit
 ) {
     Column(
@@ -462,18 +527,25 @@ fun BigDigitalLayout(
             )
         }
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (settings.showSpeed) {
-                Text("${speed.toInt()} km/h", color = Color(0xFF00E676), fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(16.dp))
-            }
-            BatteryInfoSmall(batteryLevel)
+        if (settings.showSpeed) {
+            Text("${speed.toInt()} km/h", color = Color(0xFF00E676), fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
         }
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        BrightnessControlRow(settings, contentColor, onSettingsChanged)
+
+        ControlButtonsRow(settings, contentColor, onHotspotToggle, onPowerOff, onSettingsChanged)
+
+        AnimatedVisibility(
+            visible = !settings.isAutoBrightness,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column {
+                Spacer(modifier = Modifier.height(16.dp))
+                BrightnessSliderOnly(settings, contentColor, onSettingsChanged)
+            }
+        }
     }
 }
 
@@ -484,52 +556,112 @@ fun MinimalistLayout(
     currentTime: Date,
     speed: Float,
     contentColor: Color,
-    secondaryColor: Color
+    secondaryColor: Color,
+    onHotspotToggle: () -> Unit,
+    onPowerOff: () -> Unit,
+    onSettingsChanged: (AppSettings) -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(48.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.Bottom
-    ) {
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-        Text(
-            text = timeFormat.format(currentTime),
-            color = contentColor,
-            fontSize = settings.clockSizeSp.sp,
-            fontWeight = FontWeight.Light,
-            fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath)
-        )
-        
-        if (settings.showSpeed) {
+    Box(modifier = Modifier.fillMaxSize().padding(48.dp)) {
+        Column(
+            modifier = Modifier.align(Alignment.BottomStart),
+            horizontalAlignment = Alignment.Start,
+        ) {
+            val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
             Text(
-                text = "${speed.toInt()} km/h",
-                color = secondaryColor,
-                fontSize = settings.speedSizeSp.sp,
-                fontWeight = FontWeight.Normal
+                text = timeFormat.format(currentTime),
+                color = contentColor,
+                fontSize = settings.clockSizeSp.sp,
+                fontWeight = FontWeight.Light,
+                fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath)
+            )
+            
+            if (settings.showSpeed) {
+                Text(
+                    text = "${speed.toInt()} km/h",
+                    color = secondaryColor,
+                    fontSize = settings.speedSizeSp.sp,
+                    fontWeight = FontWeight.Normal
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(if (batteryLevel > 20) Color.Green else Color.Red, shape = androidx.compose.foundation.shape.CircleShape)
             )
         }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .background(if (batteryLevel > 20) Color.Green else Color.Red, shape = androidx.compose.foundation.shape.CircleShape)
-        )
+
+        Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+            Column(horizontalAlignment = Alignment.End) {
+                ControlButtonsRow(settings, contentColor.copy(alpha = 0.5f), onHotspotToggle, onPowerOff, onSettingsChanged)
+                
+                AnimatedVisibility(
+                    visible = !settings.isAutoBrightness,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        BrightnessSliderOnly(settings, contentColor.copy(alpha = 0.5f), onSettingsChanged)
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-fun BatteryInfoSmall(batteryLevel: Int) {
+fun ControlButtonsRow(
+    settings: AppSettings,
+    contentColor: Color,
+    onHotspotToggle: () -> Unit,
+    onPowerOff: () -> Unit,
+    onSettingsChanged: (AppSettings) -> Unit
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        val batteryColor = if (batteryLevel > 20) Color.Green else Color.Red
-        Icon(Icons.Default.BatteryFull, contentDescription = null, tint = batteryColor, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(4.dp))
-        Text("$batteryLevel%", color = batteryColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        // Auto-Brightness Toggle
+        IconButton(
+            onClick = {
+                onSettingsChanged(settings.copy(isAutoBrightness = !settings.isAutoBrightness))
+            },
+        ) {
+            Icon(
+                imageVector = Icons.Default.BrightnessAuto,
+                contentDescription = "Toggle Auto Brightness",
+                tint = if (settings.isAutoBrightness) Color.Green else contentColor,
+                modifier = Modifier.size(settings.batterySizeSp.dp * 1.5f),
+            )
+        }
+
+        Spacer(modifier = Modifier.width(40.dp))
+        
+        // Hotspot Toggle
+        IconButton(onClick = onHotspotToggle) {
+            Icon(
+                imageVector = Icons.Default.WifiTethering,
+                contentDescription = "Hotspot",
+                tint = contentColor,
+                modifier = Modifier.size(settings.batterySizeSp.dp * 1.5f),
+            )
+        }
+
+        Spacer(modifier = Modifier.width(40.dp))
+
+        // Power Off
+        IconButton(onClick = onPowerOff) {
+            Icon(
+                imageVector = Icons.Default.PowerSettingsNew,
+                contentDescription = "Power Off",
+                tint = Color.Red,
+                modifier = Modifier.size(settings.batterySizeSp.dp * 1.5f),
+            )
+        }
     }
 }
 
 @Composable
-fun BrightnessControlRow(
+fun BrightnessSliderOnly(
     settings: AppSettings,
     contentColor: Color,
     onSettingsChanged: (AppSettings) -> Unit
@@ -539,38 +671,21 @@ fun BrightnessControlRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
-        IconButton(
-            onClick = {
-                val newAuto = !settings.isAutoBrightness
-                onSettingsChanged(settings.copy(isAutoBrightness = newAuto))
-            },
-        ) {
-            Icon(
-                imageVector = Icons.Default.BrightnessAuto,
-                contentDescription = "Toggle Auto Brightness",
-                tint = if (settings.isAutoBrightness) Color.Green else contentColor,
-            )
-        }
-
-        if (!settings.isAutoBrightness) {
-            Slider(
-                value = settings.brightness,
-                onValueChange = { onSettingsChanged(settings.copy(brightness = it)) },
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = contentColor,
-                    activeTrackColor = contentColor,
-                ),
-            )
-            Icon(
-                imageVector = Icons.Default.BrightnessLow,
-                contentDescription = "Brightness",
-                tint = contentColor,
-                modifier = Modifier.size(20.dp),
-            )
-        } else {
-            Spacer(modifier = Modifier.weight(1f))
-        }
+        Slider(
+            value = settings.brightness,
+            onValueChange = { onSettingsChanged(settings.copy(brightness = it)) },
+            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = contentColor,
+                activeTrackColor = contentColor,
+            ),
+        )
+        Icon(
+            imageVector = Icons.Default.BrightnessLow,
+            contentDescription = "Brightness",
+            tint = contentColor,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
@@ -675,64 +790,6 @@ fun SpeedRow(settings: AppSettings, speed: Float, contentColor: Color) {
             fontWeight = FontWeight.Bold,
             fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath)
         )
-    }
-}
-
-@Composable
-fun BatteryHotspotRow(
-    settings: AppSettings,
-    batteryLevel: Int,
-    contentColor: Color,
-    onHotspotToggle: () -> Unit,
-    onPowerOff: () -> Unit
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        val batteryColor = when {
-            batteryLevel > 60 -> if (settings.isDarkMode) Color.Green else Color(0xFF388E3C)
-            batteryLevel > 20 -> if (settings.isDarkMode) Color.Yellow else Color(0xFFFBC02D)
-            else -> Color.Red
-        }
-
-        Icon(
-            imageVector = Icons.Default.BatteryFull,
-            contentDescription = "Battery",
-            tint = batteryColor,
-            modifier = Modifier.size(settings.batterySizeSp.dp * 1.2f)
-        )
-
-        Spacer(modifier = Modifier.width(4.dp))
-
-        Text(
-            text = "$batteryLevel%",
-            style = TextStyle(
-                color = batteryColor,
-                fontSize = settings.batterySizeSp.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = getFontFamily(settings.batteryFont, settings.customBatteryFontPath),
-            ),
-        )
-        
-        Spacer(modifier = Modifier.width(40.dp))
-        
-        Icon(
-            imageVector = Icons.Default.WifiTethering,
-            contentDescription = "Hotspot",
-            tint = contentColor,
-            modifier = Modifier
-                .size(settings.batterySizeSp.dp * 1.5f)
-                .clickable { onHotspotToggle() },
-        )
-
-        Spacer(modifier = Modifier.width(40.dp))
-
-        IconButton(onClick = onPowerOff) {
-            Icon(
-                imageVector = Icons.Default.PowerSettingsNew,
-                contentDescription = "Power Off",
-                tint = Color.Red,
-                modifier = Modifier.size(settings.batterySizeSp.dp * 1.5f),
-            )
-        }
     }
 }
 
