@@ -35,6 +35,7 @@ fun SettingsScreen(
     magnitude: Float,
     onSettingsChanged: (AppSettings) -> Unit,
     onPreviewClick: () -> Unit,
+    onViewJournal: () -> Unit,
 ) {
     val context = LocalContext.current
     
@@ -83,6 +84,18 @@ fun SettingsScreen(
                 .fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            item {
+                Button(
+                    onClick = onViewJournal,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                ) {
+                    Icon(Icons.Default.ListAlt, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("View Trip Journal")
+                }
+            }
+
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -458,6 +471,55 @@ fun SettingsScreen(
                         checked = settings.useProximitySensor,
                         onCheckedChange = {
                             onSettingsChanged(settings.copy(useProximitySensor = it))
+                        },
+                    )
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Trip Finalization Dwell Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Text("${settings.tripLogDwellMinutes} minutes", fontSize = 12.sp, modifier = Modifier.padding(start = 32.dp))
+                Slider(
+                    value = settings.tripLogDwellMinutes.toFloat(),
+                    onValueChange = { 
+                        val rounded = (it / 5).toInt() * 5
+                        onSettingsChanged(settings.copy(tripLogDwellMinutes = rounded.coerceIn(5, 60))) 
+                    },
+                    valueRange = 5f..60f,
+                    steps = 10,
+                    modifier = Modifier.padding(start = 32.dp)
+                )
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Show Trip Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = settings.showTripTime,
+                        onCheckedChange = {
+                            onSettingsChanged(settings.copy(showTripTime = it))
+                        },
+                    )
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Route, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Show Trip Distance", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = settings.showTripDistance,
+                        onCheckedChange = {
+                            onSettingsChanged(settings.copy(showTripDistance = it))
                         },
                     )
                 }

@@ -39,6 +39,9 @@ class SettingsManager(private val context: Context) {
         val SHOW_PHONE_TEMPERATURE = booleanPreferencesKey("show_phone_temperature")
         val USE_PROXIMITY_SENSOR = booleanPreferencesKey("use_proximity_sensor")
         val LAYOUT_INDEX = intPreferencesKey("layout_index")
+        val SHOW_TRIP_TIME = booleanPreferencesKey("show_trip_time")
+        val SHOW_TRIP_DISTANCE = booleanPreferencesKey("show_trip_distance")
+        val TRIP_LOG_DWELL_MINUTES = intPreferencesKey("trip_log_dwell_minutes")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
@@ -71,6 +74,9 @@ class SettingsManager(private val context: Context) {
             showPhoneTemperature = preferences[Keys.SHOW_PHONE_TEMPERATURE] ?: false,
             useProximitySensor = preferences[Keys.USE_PROXIMITY_SENSOR] ?: true,
             layoutIndex = preferences[Keys.LAYOUT_INDEX] ?: 0,
+            showTripTime = preferences[Keys.SHOW_TRIP_TIME] ?: false,
+            showTripDistance = preferences[Keys.SHOW_TRIP_DISTANCE] ?: false,
+            tripLogDwellMinutes = preferences[Keys.TRIP_LOG_DWELL_MINUTES] ?: 15,
         )
     }
 
@@ -107,6 +113,9 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.SHOW_PHONE_TEMPERATURE] = settings.showPhoneTemperature
             preferences[Keys.USE_PROXIMITY_SENSOR] = settings.useProximitySensor
             preferences[Keys.LAYOUT_INDEX] = settings.layoutIndex
+            preferences[Keys.SHOW_TRIP_TIME] = settings.showTripTime
+            preferences[Keys.SHOW_TRIP_DISTANCE] = settings.showTripDistance
+            preferences[Keys.TRIP_LOG_DWELL_MINUTES] = settings.tripLogDwellMinutes
         }
     }
 }

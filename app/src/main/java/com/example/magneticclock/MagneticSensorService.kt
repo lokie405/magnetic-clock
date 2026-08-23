@@ -43,11 +43,13 @@ class MagneticSensorService : Service(), SensorEventListener {
                     isClockActive = false
                     activationStartTime = 0
                     deactivationStartTime = 0
+                    com.example.magneticclock.data.TripManager.onMagnetRemoved(this@MagneticSensorService)
                 }
                 "CLOCK_OPENED" -> {
                     isClockActive = true
                     activationStartTime = 0
                     deactivationStartTime = 0
+                    com.example.magneticclock.data.TripManager.onClockOpened(currentSettings.tripLogDwellMinutes)
                 }
             }
         }
@@ -87,6 +89,10 @@ class MagneticSensorService : Service(), SensorEventListener {
                 }
             }
         }
+
+        // Periodic check for Trip Finalization - No longer needed in its old form
+        // but we might want to clear old sessions or something.
+        // For now, I'll remove the old loop that called checkFinalization as we moved to immediate save.
 
         val filter = IntentFilter().apply {
             addAction("CLOCK_CLOSED_MANUALLY")
@@ -194,6 +200,9 @@ class MagneticSensorService : Service(), SensorEventListener {
                     vibrate(currentSettings.deactivationVibrationIntensity)
                     isClockActive = false
                     deactivationStartTime = 0
+                    
+                    com.example.magneticclock.data.TripManager.onMagnetRemoved(this)
+                    
                     sendBroadcast(Intent("CLOSE_CLOCK_ACTIVITY").apply { setPackage(packageName) })
                 }
             } else {

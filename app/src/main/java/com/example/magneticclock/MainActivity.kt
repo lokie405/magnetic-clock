@@ -9,7 +9,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import com.example.magneticclock.data.AppSettings
+import com.example.magneticclock.data.JournalManager
 import com.example.magneticclock.data.SettingsManager
+import com.example.magneticclock.ui.JournalScreen
 import com.example.magneticclock.ui.SettingsScreen
 import kotlinx.coroutines.launch
 
@@ -17,6 +19,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var settingsManager: SettingsManager
     private var currentMagnitude = mutableFloatStateOf(0f)
+    private var currentScreen = mutableStateOf("settings") // "settings" or "journal"
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -63,19 +66,32 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             val settingsState = settingsManager.settingsFlow.collectAsState(initial = AppSettings())
             
+            // Initialize Mock Data (Force recreation with new format)
+            LaunchedEffect(Unit) {
+                JournalManager.generateMockData(this@MainActivity)
+            }
+
             MaterialTheme(
                 colorScheme = if (settingsState.value.isDarkMode) darkColorScheme() else lightColorScheme(),
             ) {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    SettingsScreen(
-                        settings = settingsState.value,
-                        magnitude = currentMagnitude.floatValue,
-                        onSettingsChanged = { newSettings ->
-                            scope.launch { settingsManager.updateSettings(newSettings) }
-                        },
-                    ) {
-                        val intent = Intent(this, ClockActivity::class.java)
-                        startActivity(intent)
+                    if (currentScreen.value == "journal") {
+                        JournalScreen(onBack = { currentScreen.value = "settings" })
+                    } else {
+                        SettingsScreen(
+                            settings = settingsState.value,
+                            magnitude = currentMagnitude.floatValue,
+                            onSettingsChanged = { newSettings ->
+                                scope.launch { settingsManager.updateSettings(newSettings) }
+                            },
+                            onPreviewClick = {
+                                val intent = Intent(this@MainActivity, ClockActivity::class.java)
+                                startActivity(intent)
+                            },
+                            onViewJournal = {
+                                currentScreen.value = "journal"
+                            }
+                        )
                     }
                 }
             }

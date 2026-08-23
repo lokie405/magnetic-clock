@@ -29,4 +29,7 @@ data class AppSettings(
     val showPhoneTemperature: Boolean = false,
     val useProximitySensor: Boolean = true,
     val layoutIndex: Int = 0,
+    val showTripTime: Boolean = false,
+    val showTripDistance: Boolean = false,
+    val tripLogDwellMinutes: Int = 15,
 )

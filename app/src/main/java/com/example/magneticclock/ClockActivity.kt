@@ -14,6 +14,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.SettingsManager
+import com.example.magneticclock.data.TripManager
 import com.example.magneticclock.data.WeatherData
 import com.example.magneticclock.data.WeatherManager
 import com.example.magneticclock.ui.ClockScreen
@@ -27,7 +28,6 @@ class ClockActivity : ComponentActivity() {
     private lateinit var weatherManager: WeatherManager
     private var currentMagnitude = mutableFloatStateOf(0f)
     private var weatherData = mutableStateOf<WeatherData?>(null)
-    private var currentSpeed = mutableFloatStateOf(0f)
     private var phoneTemperature = mutableFloatStateOf(0f)
     private var batteryLevel = mutableIntStateOf(0)
 
@@ -49,8 +49,7 @@ class ClockActivity : ComponentActivity() {
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-            // speed is in m/s, convert to km/h
-            currentSpeed.floatValue = location.speed * 3.6f
+            TripManager.updateLocation(location)
         }
         override fun onProviderEnabled(provider: String) {}
         override fun onProviderDisabled(provider: String) {}
@@ -159,7 +158,7 @@ class ClockActivity : ComponentActivity() {
                     }
                 } else {
                     locationManager.removeUpdates(locationListener)
-                    currentSpeed.floatValue = 0f
+                    TripManager.currentSpeedKmH = 0f
                 }
             }
 
@@ -168,10 +167,19 @@ class ClockActivity : ComponentActivity() {
                 batteryLevel = batteryLevel.intValue,
                 magnitude = currentMagnitude.floatValue,
                 weather = weatherData.value,
-                speed = currentSpeed.floatValue,
+                speed = TripManager.currentSpeedKmH,
                 phoneTemp = phoneTemperature.floatValue,
+                tripStartTime = TripManager.tripStartTime,
+                tripDistance = TripManager.tripDistance,
+                isResumeWindowActive = TripManager.isResumeWindowActive,
                 onSettingsChanged = { newSettings ->
                     scope.launch { settingsManager.updateSettings(newSettings) }
+                },
+                onResumeTrip = {
+                    TripManager.resumeLastTrip(this@ClockActivity)
+                },
+                onDismissResume = {
+                    TripManager.dismissResume()
                 },
                 onHotspotToggle = { toggleHotspot() },
                 onDoubleTap = {
@@ -231,5 +239,10 @@ class ClockActivity : ComponentActivity() {
         locationManager.removeUpdates(locationListener)
         unregisterReceiver(closeReceiver)
         unregisterReceiver(batteryReceiver)
+        
+        // Finalize Trip if stopped
+        if (TripManager.currentSpeedKmH < 1.0f) {
+            TripManager.resetTrip()
+        }
     }
 }

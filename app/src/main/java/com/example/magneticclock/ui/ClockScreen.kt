@@ -1,5 +1,6 @@
 package com.example.magneticclock.ui
 
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -25,6 +26,7 @@ import androidx.core.graphics.drawable.toBitmap
 import com.example.magneticclock.NotificationService
 import com.example.magneticclock.R
 import com.example.magneticclock.data.AppSettings
+import com.example.magneticclock.data.TripManager
 import com.example.magneticclock.data.WeatherData
 import java.io.File
 import java.text.SimpleDateFormat
@@ -40,7 +42,12 @@ fun ClockScreen(
     weather: WeatherData?,
     speed: Float,
     phoneTemp: Float,
+    tripStartTime: Long,
+    tripDistance: Double,
+    isResumeWindowActive: Boolean,
     onSettingsChanged: (AppSettings) -> Unit,
+    onResumeTrip: () -> Unit,
+    onDismissResume: () -> Unit,
     onHotspotToggle: () -> Unit,
     onDoubleTap: () -> Unit,
     onPowerOff: () -> Unit,
@@ -122,6 +129,26 @@ fun ClockScreen(
             )
         }
 
+        // Trip Resume Panel
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 24.dp)
+        ) {
+            AnimatedVisibility(
+                visible = isResumeWindowActive,
+                enter = slideInHorizontally { it } + fadeIn(),
+                exit = slideOutHorizontally { it } + fadeOut()
+            ) {
+                TripResumePanel(
+                    onConfirm = onResumeTrip,
+                    onDeny = onDismissResume,
+                    contentColor = contentColor,
+                    secondaryColor = secondaryColor
+                )
+            }
+        }
+
         // Bottom Start: Phone Temp
         if (settings.showPhoneTemperature) {
             val tempColor = when {
@@ -153,10 +180,95 @@ fun ClockScreen(
 
         // Main Content Area (Layouts)
         when (settings.layoutIndex) {
-            1 -> SpeedFocusLayout(settings, batteryLevel, currentTime, speed, contentColor, secondaryColor, onSettingsChanged)
+            1 -> SpeedFocusLayout(
+                settings = settings,
+                batteryLevel = batteryLevel,
+                currentTime = currentTime,
+                speed = speed,
+                tripStartTime = tripStartTime,
+                tripDistance = tripDistance,
+                contentColor = contentColor,
+                secondaryColor = secondaryColor,
+                onSettingsChanged = onSettingsChanged
+            )
             2 -> BigDigitalLayout(settings, batteryLevel, currentTime, speed, contentColor, onSettingsChanged)
             3 -> MinimalistLayout(settings, batteryLevel, currentTime, speed, contentColor, secondaryColor)
-            else -> ClassicLayout(settings, batteryLevel, currentTime, speed, contentColor, secondaryColor, onHotspotToggle, onPowerOff, onSettingsChanged)
+            else -> ClassicLayout(
+                settings = settings,
+                batteryLevel = batteryLevel,
+                currentTime = currentTime,
+                speed = speed,
+                tripStartTime = tripStartTime,
+                tripDistance = tripDistance,
+                contentColor = contentColor,
+                secondaryColor = secondaryColor,
+                onHotspotToggle = onHotspotToggle,
+                onPowerOff = onPowerOff,
+                onSettingsChanged = onSettingsChanged
+            )
+        }
+    }
+}
+
+@Composable
+fun TripResumePanel(
+    onConfirm: () -> Unit,
+    onDeny: () -> Unit,
+    contentColor: Color,
+    secondaryColor: Color
+) {
+    var timeLeft by remember { mutableStateOf(30) }
+    
+    LaunchedEffect(Unit) {
+        while (timeLeft > 0) {
+            delay(1000)
+            timeLeft--
+        }
+        onDeny()
+    }
+
+    Card(
+        modifier = Modifier.width(200.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.Black.copy(alpha = 0.8f)
+        ),
+        border = androidx.compose.foundation.BorderStroke(1.dp, contentColor.copy(alpha = 0.3f))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Продовжити поїздку?",
+                color = contentColor,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            Text(
+                "Авто-скасування через $timeLeft сек",
+                color = secondaryColor,
+                fontSize = 10.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                TextButton(onClick = onDeny) {
+                    Text("Ні", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = onConfirm,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+                ) {
+                    Text("Так", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -167,6 +279,8 @@ fun ClassicLayout(
     batteryLevel: Int,
     currentTime: Date,
     speed: Float,
+    tripStartTime: Long,
+    tripDistance: Double,
     contentColor: Color,
     secondaryColor: Color,
     onHotspotToggle: () -> Unit,
@@ -185,6 +299,43 @@ fun ClassicLayout(
         if (settings.showSpeed) {
             Spacer(modifier = Modifier.height(8.dp))
             SpeedRow(settings, speed, contentColor)
+            
+            // Trip Stats
+            if (settings.showTripTime || settings.showTripDistance) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (settings.showTripTime && tripStartTime > 0) {
+                        val durationMs = System.currentTimeMillis() - tripStartTime
+                        val hours = (durationMs / (1000 * 60 * 60))
+                        val minutes = (durationMs / (1000 * 60)) % 60
+                        val seconds = (durationMs / 1000) % 60
+                        
+                        val timeStr = if (hours > 0) {
+                            "%d:%02d:%02d".format(hours, minutes, seconds)
+                        } else {
+                            "%02d:%02d".format(minutes, seconds)
+                        }
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.History, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(text = timeStr, color = contentColor, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                    
+                    if (settings.showTripTime && settings.showTripDistance && tripStartTime > 0) {
+                        Spacer(Modifier.width(20.dp))
+                    }
+                    
+                    if (settings.showTripDistance) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Route, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(text = "${"%.1f".format(tripDistance)} km", color = contentColor, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -200,6 +351,8 @@ fun SpeedFocusLayout(
     batteryLevel: Int,
     currentTime: Date,
     speed: Float,
+    tripStartTime: Long,
+    tripDistance: Double,
     contentColor: Color,
     secondaryColor: Color,
     onSettingsChanged: (AppSettings) -> Unit
@@ -235,9 +388,38 @@ fun SpeedFocusLayout(
                     modifier = Modifier.padding(bottom = (settings.speedSizeSp * 0.4).dp)
                 )
             }
+
+            // Trip Stats
+            if (settings.showTripTime || settings.showTripDistance) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (settings.showTripTime && tripStartTime > 0) {
+                        val durationMs = System.currentTimeMillis() - tripStartTime
+                        val hours = (durationMs / (1000 * 60 * 60))
+                        val minutes = (durationMs / (1000 * 60)) % 60
+                        val seconds = (durationMs / 1000) % 60
+                        
+                        val timeStr = if (hours > 0) {
+                            "%d:%02d:%02d".format(hours, minutes, seconds)
+                        } else {
+                            "%02d:%02d".format(minutes, seconds)
+                        }
+                        
+                        Text(text = timeStr, color = secondaryColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                    
+                    if (settings.showTripTime && settings.showTripDistance && tripStartTime > 0) {
+                        Text(text = "  •  ", color = secondaryColor, fontSize = 16.sp)
+                    }
+                    
+                    if (settings.showTripDistance) {
+                        Text(text = "${"%.1f".format(tripDistance)} km", color = secondaryColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
         
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         
         BatteryInfoSmall(batteryLevel)
         Spacer(modifier = Modifier.height(24.dp))
