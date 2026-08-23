@@ -11,10 +11,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -93,11 +92,16 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column {
-                            Text("Service Monitoring", fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Sensors, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(12.dp))
+                                Text("Service Monitoring", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            }
                             Text(
                                 text = if (settings.isMonitoringEnabled) "Active" else "Inactive", 
                                 fontSize = 12.sp, 
                                 color = if (settings.isMonitoringEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(start = 32.dp),
                             )
                         }
                         Spacer(Modifier.weight(1f))
@@ -113,7 +117,9 @@ fun SettingsScreen(
 
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Dark Mode", fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.DarkMode, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Dark Mode", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.weight(1f))
                     Switch(
                         checked = settings.isDarkMode,
@@ -127,21 +133,38 @@ fun SettingsScreen(
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ElectricBolt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = "Current Magnetic Field",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
                         Text(
-                            text = "Current Magnetic Field: ${"%.2f".format(magnitude)} µT", 
-                            fontSize = 18.sp, 
-                            fontWeight = FontWeight.Bold,
+                            text = "${"%.2f".format(magnitude)} µT", 
+                            fontSize = 24.sp, 
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(start = 32.dp, top = 4.dp)
                         )
                         Text(
                             text = "Activation: ${settings.activationThreshold} µT | Deactivation: ${settings.deactivationThreshold} µT",
                             fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 32.dp)
                         )
                     }
                 }
             }
 
             item {
-                Text("Trigger Thresholds (µT)", fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Trigger Thresholds (µT)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(12.dp))
                 ThresholdControl("Activation", settings.activationThreshold) {
                     onSettingsChanged(settings.copy(activationThreshold = it))
                 }
@@ -152,9 +175,18 @@ fun SettingsScreen(
             }
 
             item {
-                Text("Trigger Delays (Seconds)", fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Trigger Delays (Seconds)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(12.dp))
                 
-                Text("Activation: ${settings.triggerDelayActivationMs / 1000f}s")
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 32.dp)) {
+                    Icon(Icons.Default.PlayCircle, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Activation: ${settings.triggerDelayActivationMs / 1000f}s", fontSize = 14.sp)
+                }
                 Slider(
                     value = settings.triggerDelayActivationMs.toFloat(),
                     onValueChange = { 
@@ -163,11 +195,16 @@ fun SettingsScreen(
                     },
                     valueRange = 0f..5000f,
                     steps = 9,
+                    modifier = Modifier.padding(start = 32.dp)
                 )
                 
                 Spacer(Modifier.height(8.dp))
                 
-                Text("Deactivation: ${settings.triggerDelayDeactivationMs / 1000f}s")
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 32.dp)) {
+                    Icon(Icons.Default.StopCircle, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Deactivation: ${settings.triggerDelayDeactivationMs / 1000f}s", fontSize = 14.sp)
+                }
                 Slider(
                     value = settings.triggerDelayDeactivationMs.toFloat(),
                     onValueChange = { 
@@ -176,44 +213,70 @@ fun SettingsScreen(
                     },
                     valueRange = 0f..5000f,
                     steps = 9,
+                    modifier = Modifier.padding(start = 32.dp)
                 )
             }
 
             item {
-                Text("Notifications", fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Notifications", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = {
                         val intent = android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
                         context.startActivity(intent)
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(start = 32.dp),
                 ) {
                     Text("Grant Notification Access")
                 }
             }
             
             item {
-                Text("Vibration Power", fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Vibration, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Vibration Power", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(12.dp))
                 
-                Text("Activation Vibration: ${if (settings.activationVibrationIntensity == 0) "Off" else settings.activationVibrationIntensity}")
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 32.dp)) {
+                    Icon(Icons.Default.Vibration, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Activation Vibration: ${if (settings.activationVibrationIntensity == 0) "Off" else settings.activationVibrationIntensity}", fontSize = 14.sp)
+                }
                 Slider(
                     value = settings.activationVibrationIntensity.toFloat(),
                     onValueChange = { onSettingsChanged(settings.copy(activationVibrationIntensity = it.toInt())) },
                     valueRange = 0f..255f,
+                    modifier = Modifier.padding(start = 32.dp)
                 )
                 
                 Spacer(Modifier.height(8.dp))
                 
-                Text("Deactivation Vibration: ${if (settings.deactivationVibrationIntensity == 0) "Off" else settings.deactivationVibrationIntensity}")
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 32.dp)) {
+                    Icon(Icons.Default.Vibration, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Deactivation Vibration: ${if (settings.deactivationVibrationIntensity == 0) "Off" else settings.deactivationVibrationIntensity}", fontSize = 14.sp)
+                }
                 Slider(
                     value = settings.deactivationVibrationIntensity.toFloat(),
                     onValueChange = { onSettingsChanged(settings.copy(deactivationVibrationIntensity = it.toInt())) },
                     valueRange = 0f..255f,
+                    modifier = Modifier.padding(start = 32.dp)
                 )
             }
 
             item {
-                Text("Fonts", fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.FontDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Fonts", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(8.dp))
                 FontSelector(
                     label = "Clock Font",
                     selectedFont = settings.clockFont,
@@ -226,37 +289,77 @@ fun SettingsScreen(
                             onSettingsChanged(settings.copy(clockFont = name, customClockFontPath = path))
                         }
                     },
-                    onDeleteFont = { path ->
-                        val newCustomFonts = settings.customFonts - path
-                        val isSelected = settings.customClockFontPath == path
-                        onSettingsChanged(
-                            settings.copy(
-                                customFonts = newCustomFonts,
-                                clockFont = if (isSelected) "Default" else settings.clockFont,
-                                customClockFontPath = if (isSelected) null else settings.customClockFontPath,
-                            ),
-                        )
-                        // Delete file from storage
-                        try {
-                            File(path).delete()
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    },
-                )
+                ) { path ->
+                    val newCustomFonts = settings.customFonts - path
+                    val isSelected = settings.customClockFontPath == path
+                    onSettingsChanged(
+                        settings.copy(
+                            customFonts = newCustomFonts,
+                            clockFont = if (isSelected) "Default" else settings.clockFont,
+                            customClockFontPath = if (isSelected) null else settings.customClockFontPath,
+                        ),
+                    )
+                    // Delete file from storage
+                    try {
+                        File(path).delete()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             }
 
             item {
-                Text("Sizes", fontWeight = FontWeight.Bold)
-                SizeSlider("Clock Size", settings.clockSizeSp) { onSettingsChanged(settings.copy(clockSizeSp = it)) }
-                SizeSlider("Date Size", settings.dateSizeSp) { onSettingsChanged(settings.copy(dateSizeSp = it)) }
-                SizeSlider("Battery Size", settings.batterySizeSp) { onSettingsChanged(settings.copy(batterySizeSp = it)) }
-                SizeSlider("Speed Size", settings.speedSizeSp) { onSettingsChanged(settings.copy(speedSizeSp = it)) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Dashboard, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Layout Selection", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(start = 32.dp, top = 12.dp, bottom = 12.dp),
+                ) {
+                    val layouts = listOf("Classic", "Speed Focus", "Big Digital", "Minimalist")
+                    itemsIndexed(layouts) { index, title ->
+                        val isSelected = settings.layoutIndex == index
+                        Button(
+                            onClick = { onSettingsChanged(settings.copy(layoutIndex = index)) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                        ) {
+                            val layoutIcon = when(index) {
+                                1 -> Icons.Default.Speed
+                                2 -> Icons.Default.ViewStream
+                                3 -> Icons.Default.ViewHeadline
+                                else -> Icons.Default.ViewCompact
+                            }
+                            Icon(layoutIcon, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(title)
+                        }
+                    }
+                }
+            }
+
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Straighten, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Sizes", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                }
+                Spacer(Modifier.height(12.dp))
+                SizeSlider("Clock Size", settings.clockSizeSp, Icons.Default.AccessTime) { onSettingsChanged(settings.copy(clockSizeSp = it)) }
+                SizeSlider("Date Size", settings.dateSizeSp, Icons.Default.Today) { onSettingsChanged(settings.copy(dateSizeSp = it)) }
+                SizeSlider("Battery Size", settings.batterySizeSp, Icons.Default.BatteryChargingFull) { onSettingsChanged(settings.copy(batterySizeSp = it)) }
+                SizeSlider("Speed Size", settings.speedSizeSp, Icons.Default.Speed) { onSettingsChanged(settings.copy(speedSizeSp = it)) }
             }
             
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("OnePlus Style (Red '1' in Hour & Min)")
+                    Icon(Icons.Default.Brush, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("OnePlus Style (Red '1')", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.weight(1f))
                     Switch(
                         checked = settings.isOnePlusStyle,
@@ -269,7 +372,9 @@ fun SettingsScreen(
 
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Show Magnetic Field in Clock")
+                    Icon(Icons.Default.Visibility, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Show Magnetic Field", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.weight(1f))
                     Switch(
                         checked = settings.showMagneticField,
@@ -282,7 +387,9 @@ fun SettingsScreen(
 
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Show Weather in Clock")
+                    Icon(Icons.Default.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Show Weather", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.weight(1f))
                     Switch(
                         checked = settings.showWeather,
@@ -303,7 +410,9 @@ fun SettingsScreen(
 
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Show Speed in Clock")
+                    Icon(Icons.Default.Speed, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Show Speed", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.weight(1f))
                     Switch(
                         checked = settings.showSpeed,
@@ -324,7 +433,9 @@ fun SettingsScreen(
 
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Show Phone Temperature")
+                    Icon(Icons.Default.DeviceThermostat, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Show Phone Temperature", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.weight(1f))
                     Switch(
                         checked = settings.showPhoneTemperature,
@@ -337,8 +448,10 @@ fun SettingsScreen(
 
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.PhonelinkLock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Pocket Protection", fontWeight = FontWeight.Bold)
+                        Text("Pocket Protection", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                         Text("Use proximity sensor to prevent accidental activation", fontSize = 12.sp)
                     }
                     Switch(
@@ -355,11 +468,16 @@ fun SettingsScreen(
 
 @Composable
 fun ThresholdControl(label: String, value: Float, onValueChange: (Float) -> Unit) {
-    Column {
-        Text(
-            text = "$label: ${value.toInt()} µT", 
-            fontSize = 14.sp,
-        )
+    Column(modifier = Modifier.padding(start = 32.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val icon = if (label == "Activation") Icons.Default.PlayCircle else Icons.Default.StopCircle
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "$label: ${value.toInt()} µT", 
+                fontSize = 14.sp,
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onValueChange((value - 5).coerceAtLeast(0f)) }) {
                 Icon(Icons.Default.Remove, contentDescription = "Decrease")
@@ -535,9 +653,13 @@ fun FontSelector(
 }
 
 @Composable
-fun SizeSlider(label: String, value: Int, onValueChange: (Int) -> Unit) {
-    Column {
-        Text("$label: $value sp", fontSize = 14.sp)
+fun SizeSlider(label: String, value: Int, icon: androidx.compose.ui.graphics.vector.ImageVector, onValueChange: (Int) -> Unit) {
+    Column(modifier = Modifier.padding(start = 32.dp, top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("$label: $value sp", fontSize = 14.sp)
+        }
         Slider(
             value = value.toFloat(),
             onValueChange = { onValueChange(it.toInt()) },

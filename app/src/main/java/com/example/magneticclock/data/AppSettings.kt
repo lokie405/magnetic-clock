@@ -28,4 +28,5 @@ data class AppSettings(
     val speedSizeSp: Int = 24,
     val showPhoneTemperature: Boolean = false,
     val useProximitySensor: Boolean = true,
+    val layoutIndex: Int = 0,
 )
