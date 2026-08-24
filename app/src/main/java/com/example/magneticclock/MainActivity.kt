@@ -3,7 +3,11 @@ package com.example.magneticclock
 import android.content.*
 import android.os.Build
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -89,6 +93,22 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             val settingsState = settingsManager.settingsFlow.collectAsState(initial = AppSettings())
             
+            val permissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestMultiplePermissions()
+            ) { _ -> }
+
+            LaunchedEffect(Unit) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val permissions = mutableListOf<String>()
+                    if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                        permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+                    }
+                    if (permissions.isNotEmpty()) {
+                        permissionLauncher.launch(permissions.toTypedArray())
+                    }
+                }
+            }
+
             if (isFromClock.value) {
                 LaunchedEffect(lastInteractionTime.longValue) {
                     delay((settingsState.value.settingsReturnDelaySeconds * 1000).toLong())

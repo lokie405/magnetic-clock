@@ -46,6 +46,8 @@ fun ClockScreen(
     tripDistance: Double,
     isTripActive: Boolean,
     isResumeWindowActive: Boolean,
+    bluetoothConnected: Boolean,
+    connectedDeviceName: String,
     onSettingsChanged: (AppSettings) -> Unit,
     onResumeTrip: () -> Unit,
     onDismissResume: () -> Unit,
@@ -119,7 +121,31 @@ fun ClockScreen(
             }
         }
 
-        // Top Center: Magnetic Field
+        // Top Center: Bluetooth Status
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (bluetoothConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
+                contentDescription = "Bluetooth",
+                tint = if (bluetoothConnected) Color.Green else Color.Gray,
+                modifier = Modifier.size(24.dp)
+            )
+            if (bluetoothConnected && connectedDeviceName.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = connectedDeviceName,
+                    color = contentColor,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // Top Center (Lower): Magnetic Field
         if (settings.showMagneticField) {
             Text(
                 text = "${"%.1f".format(magnitude)} µT",
@@ -128,7 +154,7 @@ fun ClockScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 48.dp),
+                    .padding(top = 60.dp),
             )
         }
 

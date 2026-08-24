@@ -461,16 +461,16 @@ fun SettingsScreen(
 
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.PhonelinkLock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Bluetooth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Pocket Protection", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                        Text("Use proximity sensor to prevent accidental activation", fontSize = 12.sp)
+                        Text("Bluetooth Trigger", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text("Only monitor magnetic field when connected to ${settings.bluetoothTriggerDeviceName}", fontSize = 12.sp)
                     }
                     Switch(
-                        checked = settings.useProximitySensor,
+                        checked = settings.useBluetoothTrigger,
                         onCheckedChange = {
-                            onSettingsChanged(settings.copy(useProximitySensor = it))
+                            onSettingsChanged(settings.copy(useBluetoothTrigger = it))
                         },
                     )
                 }

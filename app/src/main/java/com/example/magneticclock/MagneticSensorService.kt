@@ -1,15 +1,20 @@
 package com.example.magneticclock
 
 import android.app.*
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.*
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.magneticclock.data.AppSettings
@@ -21,7 +26,6 @@ class MagneticSensorService : Service(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
     private var magneticSensor: Sensor? = null
-    private var proximitySensor: Sensor? = null
     private lateinit var settingsManager: SettingsManager
     private var currentSettings = AppSettings()
     private var vibrator: Vibrator? = null
@@ -30,7 +34,7 @@ class MagneticSensorService : Service(), SensorEventListener {
     private var activationStartTime: Long = 0
     private var deactivationStartTime: Long = 0
     private var isClockActive = false
-    private var lastProximityValue: Float = -1f
+    private var isBluetoothConnected = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return START_STICKY
@@ -55,6 +59,15 @@ class MagneticSensorService : Service(), SensorEventListener {
         }
     }
 
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action
+            if (action == BluetoothDevice.ACTION_ACL_CONNECTED || action == BluetoothDevice.ACTION_ACL_DISCONNECTED) {
+                checkBluetoothStatus()
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
@@ -62,7 +75,6 @@ class MagneticSensorService : Service(), SensorEventListener {
         magneticSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED) 
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
             
-        proximitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
         settingsManager = SettingsManager(this)
         
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -75,27 +87,24 @@ class MagneticSensorService : Service(), SensorEventListener {
 
         serviceScope.launch {
             settingsManager.settingsFlow.collect { newSettings ->
-                val wasEnabled = currentSettings.isMonitoringEnabled
+                val wasBluetoothTriggerEnabled = currentSettings.useBluetoothTrigger
+                val wasMonitoringEnabled = currentSettings.isMonitoringEnabled
+                val oldDeviceName = currentSettings.bluetoothTriggerDeviceName
+                
                 currentSettings = newSettings
                 
-                if (newSettings.isMonitoringEnabled != wasEnabled) {
-                    // Reset trigger state on toggle
+                if (newSettings.isMonitoringEnabled != wasMonitoringEnabled || 
+                    newSettings.useBluetoothTrigger != wasBluetoothTriggerEnabled ||
+                    newSettings.bluetoothTriggerDeviceName != oldDeviceName) {
+                    
+                    // Reset trigger state
                     activationStartTime = 0
                     deactivationStartTime = 0
                     
-                    if (newSettings.isMonitoringEnabled) {
-                        registerSensor()
-                    } else {
-                        isClockActive = false
-                        unregisterSensor()
-                    }
+                    updateMonitoringState()
                 }
             }
         }
-
-        // Periodic check for Trip Finalization - No longer needed in its old form
-        // but we might want to clear old sessions or something.
-        // For now, I'll remove the old loop that called checkFinalization as we moved to immediate save.
 
         val filter = IntentFilter().apply {
             addAction("CLOCK_CLOSED_MANUALLY")
@@ -109,20 +118,79 @@ class MagneticSensorService : Service(), SensorEventListener {
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
 
+        val btFilter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+        registerReceiver(bluetoothReceiver, btFilter)
+
         createNotificationChannel()
         startForeground(1, createNotification())
         
-        if (currentSettings.isMonitoringEnabled) {
+        checkBluetoothStatus()
+    }
+
+    private fun checkBluetoothStatus() {
+        if (!currentSettings.useBluetoothTrigger) {
+            isBluetoothConnected = true
+            updateMonitoringState()
+            return
+        }
+
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+        
+        if (adapter == null || !adapter.isEnabled) {
+            isBluetoothConnected = false
+            updateMonitoringState()
+            return
+        }
+
+        // Check already connected devices via profile proxy
+        adapter.getProfileProxy(this, object : BluetoothProfile.ServiceListener {
+            override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
+                var found = false
+                try {
+                    val devices = proxy?.connectedDevices
+                    devices?.forEach { device ->
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                            ActivityCompat.checkSelfPermission(this@MagneticSensorService, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                            // Can't check name, assume not found
+                        } else {
+                            if (device.name == currentSettings.bluetoothTriggerDeviceName) {
+                                found = true
+                            }
+                        }
+                    }
+                } catch (e: SecurityException) {
+                    // Permission issue
+                } finally {
+                    adapter.closeProfileProxy(profile, proxy)
+                }
+                
+                isBluetoothConnected = found
+                updateMonitoringState()
+            }
+
+            override fun onServiceDisconnected(profile: Int) {}
+        }, BluetoothProfile.A2DP)
+    }
+
+    private fun updateMonitoringState() {
+        val shouldMonitor = currentSettings.isMonitoringEnabled && 
+                           (!currentSettings.useBluetoothTrigger || isBluetoothConnected)
+        
+        if (shouldMonitor) {
             registerSensor()
+        } else {
+            isClockActive = false
+            unregisterSensor()
         }
     }
 
     private fun registerSensor() {
         magneticSensor?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-        }
-        proximitySensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST)
         }
     }
 
@@ -143,9 +211,15 @@ class MagneticSensorService : Service(), SensorEventListener {
     }
 
     private fun createNotification(): Notification {
+        val text = if (currentSettings.useBluetoothTrigger && !isBluetoothConnected) {
+            "Waiting for Bluetooth connection (${currentSettings.bluetoothTriggerDeviceName})..."
+        } else {
+            "Monitoring magnetic field..."
+        }
+
         return NotificationCompat.Builder(this, "magnetic_monitor")
             .setContentTitle("Magnetic Clock")
-            .setContentText("Monitoring magnetic field...")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .build()
@@ -157,7 +231,6 @@ class MagneticSensorService : Service(), SensorEventListener {
         if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED || 
             event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
             
-            // For UNCALIBRATED, values[0..2] are raw field, values[3..5] are estimated bias
             val x = event.values[0]
             val y = event.values[1]
             val z = event.values[2]
@@ -170,28 +243,12 @@ class MagneticSensorService : Service(), SensorEventListener {
             sendBroadcast(intent)
 
             checkTrigger(magnitude)
-        } else if (event.sensor.type == Sensor.TYPE_PROXIMITY) {
-            lastProximityValue = event.values[0]
         }
     }
 
     private fun checkTrigger(magnitude: Float) {
         if (!isClockActive) {
-            // Logic for Activation
-            // Proximity sensor: 0 usually means "Near", >0 means "Far"
-            // If settings is ON, we only allow activation if sensor explicitly says "Far" (> 0)
-            val isProximityNear = currentSettings.useProximitySensor && 
-                                proximitySensor != null && 
-                                (lastProximityValue >= 0f && lastProximityValue < 1.0f)
-            
-            val isProximityUnknown = currentSettings.useProximitySensor && 
-                                   proximitySensor != null && 
-                                   lastProximityValue == -1f
-
-            // Block if Near OR if we haven't received a value yet (safety first)
-            val isBlockedByProximity = isProximityNear || isProximityUnknown
-
-            if (magnitude >= currentSettings.activationThreshold && !isBlockedByProximity) {
+            if (magnitude >= currentSettings.activationThreshold) {
                 deactivationStartTime = 0
                 if (activationStartTime == 0L) {
                     activationStartTime = System.currentTimeMillis()
@@ -252,6 +309,7 @@ class MagneticSensorService : Service(), SensorEventListener {
         super.onDestroy()
         unregisterSensor()
         unregisterReceiver(receiver)
+        unregisterReceiver(bluetoothReceiver)
         serviceScope.cancel()
     }
 }

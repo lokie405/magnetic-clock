@@ -6,9 +6,17 @@ import android.os.BatteryManager
 import android.os.Bundle
 import android.provider.Settings
 import android.view.WindowManager
+import android.Manifest
+import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.IntentCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
@@ -30,6 +38,8 @@ class ClockActivity : ComponentActivity() {
     private var weatherData = mutableStateOf<WeatherData?>(null)
     private var phoneTemperature = mutableFloatStateOf(0f)
     private var batteryLevel = mutableIntStateOf(0)
+    private var bluetoothConnected = mutableStateOf(false)
+    private var connectedDeviceName = mutableStateOf("")
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -76,6 +86,32 @@ class ClockActivity : ComponentActivity() {
         }
     }
 
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(this@ClockActivity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
+            
+            when (intent?.action) {
+                BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                    bluetoothConnected.value = true
+                    val device = IntentCompat.getParcelableExtra(intent, BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                    try {
+                        connectedDeviceName.value = device?.name ?: "Unknown Device"
+                    } catch (e: SecurityException) {
+                        connectedDeviceName.value = "Connected"
+                    }
+                }
+                BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                    bluetoothConnected.value = false
+                    connectedDeviceName.value = ""
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -98,6 +134,14 @@ class ClockActivity : ComponentActivity() {
         
         val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         registerReceiver(batteryReceiver, batteryFilter)
+
+        val bluetoothFilter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+        registerReceiver(bluetoothReceiver, bluetoothFilter)
+        
+        checkInitialBluetoothStatus()
         
         ContextCompat.registerReceiver(
             this,
@@ -173,6 +217,8 @@ class ClockActivity : ComponentActivity() {
                 tripDistance = TripManager.tripDistance,
                 isTripActive = TripManager.isTripActive,
                 isResumeWindowActive = TripManager.isResumeWindowActive,
+                bluetoothConnected = bluetoothConnected.value,
+                connectedDeviceName = connectedDeviceName.value,
                 onSettingsChanged = { newSettings ->
                     scope.launch { settingsManager.updateSettings(newSettings) }
                 },
@@ -241,12 +287,48 @@ class ClockActivity : ComponentActivity() {
         }
     }
 
+    private fun checkInitialBluetoothStatus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        try {
+            val bluetoothManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+            val adapter = bluetoothManager.adapter
+            if (adapter != null && adapter.isEnabled) {
+                adapter.getProfileProxy(this, object : BluetoothProfile.ServiceListener {
+                    override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
+                        try {
+                            val devices = proxy?.connectedDevices
+                            if (!devices.isNullOrEmpty()) {
+                                bluetoothConnected.value = true
+                                connectedDeviceName.value = devices[0].name ?: "Unknown Device"
+                            }
+                        } catch (e: SecurityException) {
+                            bluetoothConnected.value = true
+                            connectedDeviceName.value = "Connected"
+                        } finally {
+                            adapter.closeProfileProxy(profile, proxy)
+                        }
+                    }
+
+                    override fun onServiceDisconnected(profile: Int) {}
+                }, BluetoothProfile.A2DP)
+            }
+        } catch (e: SecurityException) {
+            // Log or handle the lack of permission
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
         locationManager.removeUpdates(locationListener)
         unregisterReceiver(closeReceiver)
         unregisterReceiver(batteryReceiver)
+        unregisterReceiver(bluetoothReceiver)
         
         // Finalize Trip if stopped
         if (TripManager.currentSpeedKmH < 1.0f) {
