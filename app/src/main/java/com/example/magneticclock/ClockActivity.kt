@@ -171,6 +171,7 @@ class ClockActivity : ComponentActivity() {
                 phoneTemp = phoneTemperature.floatValue,
                 tripStartTime = TripManager.tripStartTime,
                 tripDistance = TripManager.tripDistance,
+                isTripActive = TripManager.isTripActive,
                 isResumeWindowActive = TripManager.isResumeWindowActive,
                 onSettingsChanged = { newSettings ->
                     scope.launch { settingsManager.updateSettings(newSettings) }

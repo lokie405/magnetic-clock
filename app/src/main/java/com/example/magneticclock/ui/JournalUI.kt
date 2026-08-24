@@ -175,7 +175,7 @@ fun TripItem(tripNumber: Int, trip: TripEntry, onLongClick: () -> Unit) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    color = MaterialTheme.colorScheme.primary,
+                    color = Color.Black,
                     shape = androidx.compose.foundation.shape.CircleShape,
                     modifier = Modifier.size(24.dp)
                 ) {

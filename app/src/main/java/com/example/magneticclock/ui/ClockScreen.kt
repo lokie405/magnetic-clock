@@ -44,6 +44,7 @@ fun ClockScreen(
     phoneTemp: Float,
     tripStartTime: Long,
     tripDistance: Double,
+    isTripActive: Boolean,
     isResumeWindowActive: Boolean,
     onSettingsChanged: (AppSettings) -> Unit,
     onResumeTrip: () -> Unit,
@@ -161,8 +162,8 @@ fun ClockScreen(
         // Trip Resume Panel
         Box(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 24.dp)
+                .align(Alignment.TopEnd)
+                .padding(top = 120.dp, end = 24.dp)
         ) {
             AnimatedVisibility(
                 visible = isResumeWindowActive,
@@ -215,6 +216,7 @@ fun ClockScreen(
                 speed = speed,
                 tripStartTime = tripStartTime,
                 tripDistance = tripDistance,
+                isTripActive = isTripActive,
                 contentColor = contentColor,
                 secondaryColor = secondaryColor,
                 onHotspotToggle = onHotspotToggle,
@@ -247,6 +249,7 @@ fun ClockScreen(
                 speed = speed,
                 tripStartTime = tripStartTime,
                 tripDistance = tripDistance,
+                isTripActive = isTripActive,
                 contentColor = contentColor,
                 secondaryColor = secondaryColor,
                 onHotspotToggle = onHotspotToggle,
@@ -275,45 +278,51 @@ fun TripResumePanel(
     }
 
     Card(
-        modifier = Modifier.width(200.dp),
+        modifier = Modifier.width(180.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.Black.copy(alpha = 0.8f)
+            containerColor = Color.Black.copy(alpha = 0.85f)
         ),
         border = androidx.compose.foundation.BorderStroke(1.dp, contentColor.copy(alpha = 0.3f))
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 "Продовжити поїздку?",
                 color = contentColor,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Bold
             )
             
             Spacer(modifier = Modifier.height(4.dp))
             
             Text(
-                "Авто-скасування через $timeLeft сек",
+                "Скасування через $timeLeft сек",
                 color = secondaryColor,
-                fontSize = 10.sp
+                fontSize = 9.sp
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                TextButton(onClick = onDeny) {
-                    Text("Ні", color = Color.Red, fontWeight = FontWeight.Bold)
+                TextButton(
+                    onClick = onDeny,
+                    contentPadding = PaddingValues(0.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Text("Ні", color = Color.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Button(
                     onClick = onConfirm,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier.height(32.dp)
                 ) {
-                    Text("Так", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("Так", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -327,6 +336,7 @@ fun ClassicLayout(
     speed: Float,
     tripStartTime: Long,
     tripDistance: Double,
+    isTripActive: Boolean,
     contentColor: Color,
     secondaryColor: Color,
     onHotspotToggle: () -> Unit,
@@ -350,34 +360,34 @@ fun ClassicLayout(
             if (settings.showTripTime || settings.showTripDistance) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (settings.showTripTime && tripStartTime > 0) {
-                        val durationMs = System.currentTimeMillis() - tripStartTime
-                        val hours = (durationMs / (1000 * 60 * 60))
-                        val minutes = (durationMs / (1000 * 60)) % 60
-                        val seconds = (durationMs / 1000) % 60
-                        
-                        val timeStr = if (hours > 0) {
-                            "%d:%02d:%02d".format(hours, minutes, seconds)
+                    if (settings.showTripTime && isTripActive) {
+                        val timeStr = if (tripStartTime > 0) {
+                            val durationMs = System.currentTimeMillis() - tripStartTime
+                            val hours = (durationMs / (1000 * 60 * 60))
+                            val minutes = (durationMs / (1000 * 60)) % 60
+                            val seconds = (durationMs / 1000) % 60
+                            if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+                            else "%02d:%02d".format(minutes, seconds)
                         } else {
-                            "%02d:%02d".format(minutes, seconds)
+                            "00:00"
                         }
                         
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.History, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.History, contentDescription = null, tint = contentColor, modifier = Modifier.size(settings.speedSizeSp.dp * 0.8f))
                             Spacer(Modifier.width(4.dp))
-                            Text(text = timeStr, color = contentColor, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                            Text(text = timeStr, color = contentColor, fontSize = settings.speedSizeSp.sp, fontWeight = FontWeight.Black)
                         }
                     }
                     
-                    if (settings.showTripTime && settings.showTripDistance && tripStartTime > 0) {
+                    if (settings.showTripTime && settings.showTripDistance && isTripActive) {
                         Spacer(Modifier.width(20.dp))
                     }
                     
-                    if (settings.showTripDistance) {
+                    if (settings.showTripDistance && isTripActive) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Route, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Route, contentDescription = null, tint = contentColor, modifier = Modifier.size(settings.speedSizeSp.dp * 0.8f))
                             Spacer(Modifier.width(4.dp))
-                            Text(text = "${"%.1f".format(tripDistance)} km", color = contentColor, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                            Text(text = "${"%.1f".format(tripDistance)} km", color = contentColor, fontSize = settings.speedSizeSp.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }
@@ -407,6 +417,7 @@ fun SpeedFocusLayout(
     speed: Float,
     tripStartTime: Long,
     tripDistance: Double,
+    isTripActive: Boolean,
     contentColor: Color,
     secondaryColor: Color,
     onHotspotToggle: () -> Unit,
@@ -448,27 +459,27 @@ fun SpeedFocusLayout(
             // Trip Stats
             if (settings.showTripTime || settings.showTripDistance) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (settings.showTripTime && tripStartTime > 0) {
-                        val durationMs = System.currentTimeMillis() - tripStartTime
-                        val hours = (durationMs / (1000 * 60 * 60))
-                        val minutes = (durationMs / (1000 * 60)) % 60
-                        val seconds = (durationMs / 1000) % 60
-                        
-                        val timeStr = if (hours > 0) {
-                            "%d:%02d:%02d".format(hours, minutes, seconds)
+                    if (settings.showTripTime && isTripActive) {
+                        val timeStr = if (tripStartTime > 0) {
+                            val durationMs = System.currentTimeMillis() - tripStartTime
+                            val hours = (durationMs / (1000 * 60 * 60))
+                            val minutes = (durationMs / (1000 * 60)) % 60
+                            val seconds = (durationMs / 1000) % 60
+                            if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+                            else "%02d:%02d".format(minutes, seconds)
                         } else {
-                            "%02d:%02d".format(minutes, seconds)
+                            "00:00"
                         }
                         
-                        Text(text = timeStr, color = secondaryColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(text = timeStr, color = secondaryColor, fontSize = settings.speedSizeSp.sp, fontWeight = FontWeight.Bold)
                     }
                     
-                    if (settings.showTripTime && settings.showTripDistance && tripStartTime > 0) {
-                        Text(text = "  •  ", color = secondaryColor, fontSize = 16.sp)
+                    if (settings.showTripTime && settings.showTripDistance && isTripActive) {
+                        Text(text = "  •  ", color = secondaryColor, fontSize = settings.speedSizeSp.sp)
                     }
                     
-                    if (settings.showTripDistance) {
-                        Text(text = "${"%.1f".format(tripDistance)} km", color = secondaryColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    if (settings.showTripDistance && isTripActive) {
+                        Text(text = "${"%.1f".format(tripDistance)} km", color = secondaryColor, fontSize = settings.speedSizeSp.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
@@ -800,7 +811,7 @@ private fun getWeatherIcon(code: Int): ImageVector {
         45, 48 -> Icons.Default.WbCloudy // Fog
         51, 53, 55, 61, 63, 65, 80, 81, 82 -> Icons.Default.WaterDrop // Rain
         71, 73, 75, 77, 85, 86 -> Icons.Default.WbCloudy // Snow (using cloudy as simple)
-        95, 96, 99 -> Icons.Default.Thunderstorm // Thunderstorm
+        95, 96 -> Icons.Default.Thunderstorm // Thunderstorm
         else -> Icons.Default.WbCloudy
     }
 }
@@ -812,7 +823,7 @@ private fun getWeatherColor(code: Int): Color {
         45, 48 -> Color.LightGray // Light Gray for fog
         51, 53, 55, 61, 63, 65, 80, 81, 82 -> Color(0xFF29B6F6) // Blue for Rain
         71, 73, 75, 77, 85, 86 -> Color.White // White for Snow
-        95, 96, 99 -> Color(0xFFFFAB00) // Amber for Thunderstorm
+        95, 96 -> Color(0xFFFFAB00) // Amber for Thunderstorm
         else -> Color.Gray
     }
 }

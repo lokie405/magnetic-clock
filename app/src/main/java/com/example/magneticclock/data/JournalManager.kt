@@ -153,11 +153,11 @@ object JournalManager {
         val random = Random()
 
         // Створюємо записи за останні 10 днів (близько 15 поїздок)
-        for (i in 0 until 10) {
+        for (_i in 0 until 10) {
             val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(cal.time)
             // 1-2 поїздки на день
             val numTrips = random.nextInt(2) + 1
-            for (j in 0 until numTrips) {
+            for (_j in 0 until numTrips) {
                 val startHour = 8 + random.nextInt(10)
                 cal.set(Calendar.HOUR_OF_DAY, startHour)
                 cal.set(Calendar.MINUTE, random.nextInt(60))

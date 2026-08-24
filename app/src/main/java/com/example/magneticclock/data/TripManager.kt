@@ -7,15 +7,13 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
 object TripManager {
     var tripStartTime by mutableLongStateOf(0L)
     var tripDistance by mutableDoubleStateOf(0.0)
-    var isTripStarted by mutableStateOf(false)
+    var isTripActive by mutableStateOf(false) // Means phone is on magnet and trip is ready
     
     private var lastLocation: Location? = null
     var currentSpeedKmH by mutableStateOf(0f)
@@ -33,18 +31,15 @@ object TripManager {
         val speed = location.speed * 3.6f
         currentSpeedKmH = speed
 
-        // Start trip if moving and not started yet
-        if (speed > 2.0f && !isTripStarted) {
+        // Trigger start of counting only when moving
+        if (speed > 2.0f && isTripActive && tripStartTime == 0L) {
             tripStartTime = System.currentTimeMillis()
-            tripDistance = 0.0
-            isTripStarted = true
-            isResumeWindowActive = false
             startLat = location.latitude
             startLng = location.longitude
         }
 
-        // Accumulate distance if trip is active
-        if (isTripStarted) {
+        // Accumulate distance if counting has started
+        if (isTripActive && tripStartTime > 0L) {
             lastLocation?.let { prev ->
                 val distanceMeters = location.distanceTo(prev)
                 if (distanceMeters > 0) {
@@ -54,7 +49,6 @@ object TripManager {
             endLat = location.latitude
             endLng = location.longitude
             
-            // If movement restarts during resume window, finalize the old one and start new (implicit in speed > 2)
             if (speed > 2.0f && isResumeWindowActive) {
                 isResumeWindowActive = false
             }
@@ -63,17 +57,27 @@ object TripManager {
     }
 
     fun onClockOpened(dwellMinutes: Int) {
-        if (!isTripStarted && lastFinalizedTime > 0) {
-            val elapsedMs = System.currentTimeMillis() - lastFinalizedTime
+        if (!isTripActive) {
+            val elapsedMs = if (lastFinalizedTime > 0) System.currentTimeMillis() - lastFinalizedTime else Long.MAX_VALUE
             if (elapsedMs < dwellMinutes * 60 * 1000L) {
                 isResumeWindowActive = true
+            } else {
+                // Prepare trip immediately on magnet contact, but don't count time yet
+                tripStartTime = 0L
+                tripDistance = 0.0
+                isTripActive = true
+                isResumeWindowActive = false
             }
         }
     }
 
     fun onMagnetRemoved(context: Context) {
-        if (isTripStarted && currentSpeedKmH < 1.0f) {
-            finalizeAndSave(context)
+        if (isTripActive) {
+            if (tripStartTime > 0L) {
+                finalizeAndSave(context)
+            } else {
+                resetTrip() // Just reset if trip never actually started moving
+            }
         }
     }
 
@@ -83,7 +87,6 @@ object TripManager {
             tripStartTime = lastTrip.startTime
             tripDistance = lastTrip.distance
             
-            // Re-parse coordinates from "lat,lng" string
             val startParts = lastTrip.startLatLng.split(",")
             if (startParts.size == 2) {
                 startLat = startParts[0].toDoubleOrNull() ?: 0.0
@@ -96,26 +99,27 @@ object TripManager {
                 endLng = endParts[1].toDoubleOrNull() ?: 0.0
             }
 
-            isTripStarted = true
+            isTripActive = true
             isResumeWindowActive = false
-            
-            // Remove it from journal as it's now back in active state
             JournalManager.deleteLastTrip(context)
         }
     }
 
     fun dismissResume() {
         isResumeWindowActive = false
+        if (!isTripActive) {
+            tripStartTime = 0L
+            tripDistance = 0.0
+            isTripActive = true
+        }
     }
 
     private fun finalizeAndSave(context: Context) {
-        if (!isTripStarted) return
+        if (!isTripActive || tripStartTime == 0L) return
 
         val endTime = System.currentTimeMillis()
         val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(tripStartTime))
         
-        // We do geocoding in foreground or background?
-        // To be safe and immediate, we save coordinates, geocoding can happen on view or via simple call
         val startAddr = JournalManager.getAddress(context, startLat, startLng)
         val endAddr = JournalManager.getAddress(context, endLat, endLng)
 
@@ -138,7 +142,7 @@ object TripManager {
     fun resetTrip() {
         tripStartTime = 0L
         tripDistance = 0.0
-        isTripStarted = false
+        isTripActive = false
         lastLocation = null
     }
 }

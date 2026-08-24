@@ -96,9 +96,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Initialize Mock Data (Force recreation with new format)
+            // Initialize Mock Data once
             LaunchedEffect(Unit) {
-                JournalManager.generateMockData(this@MainActivity)
+                if (JournalManager.loadTrips(this@MainActivity).isEmpty()) {
+                    JournalManager.generateMockData(this@MainActivity)
+                }
             }
 
             MaterialTheme(

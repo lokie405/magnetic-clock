@@ -58,7 +58,10 @@ class MagneticSensorService : Service(), SensorEventListener {
     override fun onCreate() {
         super.onCreate()
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-        magneticSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        // Switch to UNCALIBRATED for more stable trigger behavior
+        magneticSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED) 
+            ?: sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+            
         proximitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY)
         settingsManager = SettingsManager(this)
         
@@ -151,7 +154,10 @@ class MagneticSensorService : Service(), SensorEventListener {
     override fun onSensorChanged(event: SensorEvent?) {
         if (event == null) return
         
-        if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
+        if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED || 
+            event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
+            
+            // For UNCALIBRATED, values[0..2] are raw field, values[3..5] are estimated bias
             val x = event.values[0]
             val y = event.values[1]
             val z = event.values[2]
