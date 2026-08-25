@@ -12,29 +12,67 @@ object JournalManager {
     private val gson = GsonBuilder().setPrettyPrinting().create()
     private const val JSON_FILE = "trips_journal.json"
     private const val TEXT_FILE = "trips_history.txt"
+    private const val DELETED_FILE = "deleted_trips.json"
 
     fun loadTrips(context: Context): List<TripEntry> {
         val file = File(context.filesDir, JSON_FILE)
         if (!file.exists()) return emptyList()
-        return try {
+        val trips = try {
             val json = file.readText()
             val type = object : TypeToken<List<TripEntry>>() {}.type
-            gson.fromJson(json, type) ?: emptyList()
+            gson.fromJson<List<TripEntry>>(json, type) ?: emptyList()
         } catch (e: Exception) {
             emptyList()
         }
+        
+        val deletedIds = loadDeletedIds(context)
+        return trips.filter { it.id !in deletedIds }
     }
 
     fun saveTrip(context: Context, entry: TripEntry) {
+        val deletedIds = loadDeletedIds(context)
+        if (entry.id in deletedIds) {
+            android.util.Log.w("JournalManager", "Attempted to save a deleted trip ID: ${entry.id}")
+            return
+        }
+
         val trips = loadTrips(context).toMutableList()
         trips.add(entry)
+        android.util.Log.i("JournalManager", "Saving trip to file. New total: ${trips.size}")
         saveAll(context, trips)
     }
 
     fun deleteTrip(context: Context, id: String) {
         val trips = loadTrips(context).toMutableList()
         trips.removeAll { it.id == id }
+        
+        val deletedIds = loadDeletedIds(context).toMutableSet()
+        deletedIds.add(id)
+        saveDeletedIds(context, deletedIds)
+        
         saveAll(context, trips)
+    }
+
+    private fun loadDeletedIds(context: Context): Set<String> {
+        val file = File(context.filesDir, DELETED_FILE)
+        if (!file.exists()) return emptySet()
+        return try {
+            val json = file.readText()
+            val type = object : TypeToken<Set<String>>() {}.type
+            gson.fromJson(json, type) ?: emptySet()
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
+
+    private fun saveDeletedIds(context: Context, ids: Set<String>) {
+        val file = File(context.filesDir, DELETED_FILE)
+        try {
+            val json = gson.toJson(ids)
+            file.writeText(json)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun getLastTrip(context: Context): TripEntry? {

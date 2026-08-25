@@ -1,11 +1,12 @@
 package com.example.magneticclock
 
+import android.Manifest
 import android.content.*
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.Manifest
-import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -103,6 +104,11 @@ class MainActivity : ComponentActivity() {
                     if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                         permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
                     }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
                     if (permissions.isNotEmpty()) {
                         permissionLauncher.launch(permissions.toTypedArray())
                     }
@@ -140,6 +146,10 @@ class MainActivity : ComponentActivity() {
                         }
                 ) {
                     if (currentScreen.value == "journal") {
+                        BackHandler {
+                            currentScreen.value = "settings"
+                            updateInteractionTime()
+                        }
                         JournalScreen(onBack = { 
                             currentScreen.value = "settings"
                             updateInteractionTime()

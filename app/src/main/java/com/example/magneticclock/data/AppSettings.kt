@@ -27,11 +27,9 @@ data class AppSettings(
     val showSpeed: Boolean = false,
     val speedSizeSp: Int = 24,
     val showPhoneTemperature: Boolean = false,
-    val useBluetoothTrigger: Boolean = true,
     val bluetoothTriggerDeviceName: String = "Ford Focus 3",
     val layoutIndex: Int = 0,
     val showTripTime: Boolean = false,
     val showTripDistance: Boolean = false,
-    val tripLogDwellMinutes: Int = 15,
     val settingsReturnDelaySeconds: Float = 5.0f,
 )

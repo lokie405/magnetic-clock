@@ -8,9 +8,6 @@ import android.provider.Settings
 import android.view.WindowManager
 import android.Manifest
 import android.content.pm.PackageManager
-import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
@@ -55,16 +52,6 @@ class ClockActivity : ComponentActivity() {
                 phoneTemperature.floatValue = temp / 10f
             }
         }
-    }
-
-    private val locationListener = object : LocationListener {
-        override fun onLocationChanged(location: Location) {
-            TripManager.updateLocation(location)
-        }
-        override fun onProviderEnabled(provider: String) {}
-        override fun onProviderDisabled(provider: String) {}
-        @Deprecated("Deprecated in Java")
-        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
     }
 
     private val closeReceiver = object : BroadcastReceiver() {
@@ -187,23 +174,8 @@ class ClockActivity : ComponentActivity() {
                 }
             }
 
-            LaunchedEffect(settingsState.showSpeed) {
-                val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
-                if (settingsState.showSpeed) {
-                    try {
-                        locationManager.requestLocationUpdates(
-                            LocationManager.GPS_PROVIDER,
-                            1000L,
-                            1f,
-                            locationListener,
-                        )
-                    } catch (e: SecurityException) {
-                        // Permission not granted
-                    }
-                } else {
-                    locationManager.removeUpdates(locationListener)
-                    TripManager.currentSpeedKmH = 0f
-                }
+            LaunchedEffect(Unit) {
+                // Location updates are now handled by MagneticSensorService
             }
 
             ClockScreen(
@@ -216,17 +188,10 @@ class ClockActivity : ComponentActivity() {
                 tripStartTime = TripManager.tripStartTime,
                 tripDistance = TripManager.tripDistance,
                 isTripActive = TripManager.isTripActive,
-                isResumeWindowActive = TripManager.isResumeWindowActive,
                 bluetoothConnected = bluetoothConnected.value,
                 connectedDeviceName = connectedDeviceName.value,
                 onSettingsChanged = { newSettings ->
                     scope.launch { settingsManager.updateSettings(newSettings) }
-                },
-                onResumeTrip = {
-                    TripManager.resumeLastTrip(this@ClockActivity)
-                },
-                onDismissResume = {
-                    TripManager.dismissResume()
                 },
                 onSettingsClick = {
                     val intent = Intent(this@ClockActivity, MainActivity::class.java).apply {
@@ -245,6 +210,9 @@ class ClockActivity : ComponentActivity() {
                     } catch (_: Exception) {
                         // Voice command not supported or no assistant found
                     }
+                },
+                onStartTrip = {
+                    TripManager.startTrip(0.0, 0.0) // Manual start (coords will be updated by GPS)
                 },
                 onPowerOff = {
                     scope.launch {
@@ -324,15 +292,8 @@ class ClockActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        val locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
-        locationManager.removeUpdates(locationListener)
         unregisterReceiver(closeReceiver)
         unregisterReceiver(batteryReceiver)
         unregisterReceiver(bluetoothReceiver)
-        
-        // Finalize Trip if stopped
-        if (TripManager.currentSpeedKmH < 1.0f) {
-            TripManager.resetTrip()
-        }
     }
 }

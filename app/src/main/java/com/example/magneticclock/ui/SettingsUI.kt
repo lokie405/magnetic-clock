@@ -460,39 +460,26 @@ fun SettingsScreen(
             }
 
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Bluetooth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Bluetooth Trigger", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                        Text("Only monitor magnetic field when connected to ${settings.bluetoothTriggerDeviceName}", fontSize = 12.sp)
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Bluetooth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(12.dp))
+                            Text("Bluetooth Status", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Target: ${settings.bluetoothTriggerDeviceName} or havit tw929pro",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        Text(
+                            text = if (magnitude > 0) "Bluetooth Connected & Monitoring Active" else "Waiting for Bluetooth connection...",
+                            fontSize = 12.sp,
+                            color = if (magnitude > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
                     }
-                    Switch(
-                        checked = settings.useBluetoothTrigger,
-                        onCheckedChange = {
-                            onSettingsChanged(settings.copy(useBluetoothTrigger = it))
-                        },
-                    )
                 }
-            }
-
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Trip Finalization Dwell Time", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                }
-                Text("${settings.tripLogDwellMinutes} minutes", fontSize = 12.sp, modifier = Modifier.padding(start = 32.dp))
-                Slider(
-                    value = settings.tripLogDwellMinutes.toFloat(),
-                    onValueChange = { 
-                        val rounded = (it / 5).toInt() * 5
-                        onSettingsChanged(settings.copy(tripLogDwellMinutes = rounded.coerceIn(5, 60))) 
-                    },
-                    valueRange = 5f..60f,
-                    steps = 10,
-                    modifier = Modifier.padding(start = 32.dp)
-                )
             }
 
             item {

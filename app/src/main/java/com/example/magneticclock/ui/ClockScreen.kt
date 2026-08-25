@@ -45,15 +45,13 @@ fun ClockScreen(
     tripStartTime: Long,
     tripDistance: Double,
     isTripActive: Boolean,
-    isResumeWindowActive: Boolean,
     bluetoothConnected: Boolean,
     connectedDeviceName: String,
     onSettingsChanged: (AppSettings) -> Unit,
-    onResumeTrip: () -> Unit,
-    onDismissResume: () -> Unit,
     onSettingsClick: () -> Unit,
     onHotspotToggle: () -> Unit,
     onDoubleTap: () -> Unit,
+    onStartTrip: () -> Unit,
     onPowerOff: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -185,26 +183,6 @@ fun ClockScreen(
             )
         }
 
-        // Trip Resume Panel
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 120.dp, end = 24.dp)
-        ) {
-            AnimatedVisibility(
-                visible = isResumeWindowActive,
-                enter = slideInHorizontally { it } + fadeIn(),
-                exit = slideOutHorizontally { it } + fadeOut()
-            ) {
-                TripResumePanel(
-                    onConfirm = onResumeTrip,
-                    onDeny = onDismissResume,
-                    contentColor = contentColor,
-                    secondaryColor = secondaryColor
-                )
-            }
-        }
-
         // Bottom Start: Phone Temp
         if (settings.showPhoneTemperature) {
             val tempColor = when {
@@ -246,6 +224,7 @@ fun ClockScreen(
                 contentColor = contentColor,
                 secondaryColor = secondaryColor,
                 onHotspotToggle = onHotspotToggle,
+                onStartTrip = onStartTrip,
                 onPowerOff = onPowerOff,
                 onSettingsChanged = onSettingsChanged
             )
@@ -279,6 +258,7 @@ fun ClockScreen(
                 contentColor = contentColor,
                 secondaryColor = secondaryColor,
                 onHotspotToggle = onHotspotToggle,
+                onStartTrip = onStartTrip,
                 onPowerOff = onPowerOff,
                 onSettingsChanged = onSettingsChanged
             )
@@ -366,6 +346,7 @@ fun ClassicLayout(
     contentColor: Color,
     secondaryColor: Color,
     onHotspotToggle: () -> Unit,
+    onStartTrip: () -> Unit,
     onPowerOff: () -> Unit,
     onSettingsChanged: (AppSettings) -> Unit
 ) {
@@ -421,7 +402,20 @@ fun ClassicLayout(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
-        ControlButtonsRow(settings, contentColor, onHotspotToggle, onPowerOff, onSettingsChanged)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ControlButtonsRow(settings, contentColor, onHotspotToggle, onPowerOff, onSettingsChanged)
+            if (isTripActive && tripStartTime == 0L) {
+                Spacer(modifier = Modifier.width(40.dp))
+                IconButton(onClick = onStartTrip) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Start Trip",
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(settings.batterySizeSp.dp * 2.0f)
+                    )
+                }
+            }
+        }
         
         AnimatedVisibility(
             visible = !settings.isAutoBrightness,
@@ -447,6 +441,7 @@ fun SpeedFocusLayout(
     contentColor: Color,
     secondaryColor: Color,
     onHotspotToggle: () -> Unit,
+    onStartTrip: () -> Unit,
     onPowerOff: () -> Unit,
     onSettingsChanged: (AppSettings) -> Unit
 ) {
@@ -513,7 +508,20 @@ fun SpeedFocusLayout(
         }
         
         Spacer(modifier = Modifier.height(16.dp))
-        ControlButtonsRow(settings, contentColor, onHotspotToggle, onPowerOff, onSettingsChanged)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            ControlButtonsRow(settings, contentColor, onHotspotToggle, onPowerOff, onSettingsChanged)
+            if (isTripActive && tripStartTime == 0L) {
+                Spacer(modifier = Modifier.width(40.dp))
+                IconButton(onClick = onStartTrip) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Start Trip",
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(settings.batterySizeSp.dp * 2.0f)
+                    )
+                }
+            }
+        }
 
         AnimatedVisibility(
             visible = !settings.isAutoBrightness,

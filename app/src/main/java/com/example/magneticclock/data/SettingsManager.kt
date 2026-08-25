@@ -37,12 +37,10 @@ class SettingsManager(private val context: Context) {
         val SHOW_SPEED = booleanPreferencesKey("show_speed")
         val SPEED_SIZE = intPreferencesKey("speed_size")
         val SHOW_PHONE_TEMPERATURE = booleanPreferencesKey("show_phone_temperature")
-        val USE_BLUETOOTH_TRIGGER = booleanPreferencesKey("use_bluetooth_trigger")
         val BLUETOOTH_TRIGGER_DEVICE_NAME = stringPreferencesKey("bluetooth_trigger_device_name")
         val LAYOUT_INDEX = intPreferencesKey("layout_index")
         val SHOW_TRIP_TIME = booleanPreferencesKey("show_trip_time")
         val SHOW_TRIP_DISTANCE = booleanPreferencesKey("show_trip_distance")
-        val TRIP_LOG_DWELL_MINUTES = intPreferencesKey("trip_log_dwell_minutes")
         val SETTINGS_RETURN_DELAY = floatPreferencesKey("settings_return_delay")
     }
 
@@ -74,12 +72,10 @@ class SettingsManager(private val context: Context) {
             showSpeed = preferences[Keys.SHOW_SPEED] ?: false,
             speedSizeSp = preferences[Keys.SPEED_SIZE] ?: 24,
             showPhoneTemperature = preferences[Keys.SHOW_PHONE_TEMPERATURE] ?: false,
-            useBluetoothTrigger = preferences[Keys.USE_BLUETOOTH_TRIGGER] ?: true,
             bluetoothTriggerDeviceName = preferences[Keys.BLUETOOTH_TRIGGER_DEVICE_NAME] ?: "Ford Focus 3",
             layoutIndex = preferences[Keys.LAYOUT_INDEX] ?: 0,
             showTripTime = preferences[Keys.SHOW_TRIP_TIME] ?: false,
             showTripDistance = preferences[Keys.SHOW_TRIP_DISTANCE] ?: false,
-            tripLogDwellMinutes = preferences[Keys.TRIP_LOG_DWELL_MINUTES] ?: 15,
             settingsReturnDelaySeconds = preferences[Keys.SETTINGS_RETURN_DELAY] ?: 5.0f,
         )
     }
@@ -115,12 +111,10 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.SHOW_SPEED] = settings.showSpeed
             preferences[Keys.SPEED_SIZE] = settings.speedSizeSp
             preferences[Keys.SHOW_PHONE_TEMPERATURE] = settings.showPhoneTemperature
-            preferences[Keys.USE_BLUETOOTH_TRIGGER] = settings.useBluetoothTrigger
             preferences[Keys.BLUETOOTH_TRIGGER_DEVICE_NAME] = settings.bluetoothTriggerDeviceName
             preferences[Keys.LAYOUT_INDEX] = settings.layoutIndex
             preferences[Keys.SHOW_TRIP_TIME] = settings.showTripTime
             preferences[Keys.SHOW_TRIP_DISTANCE] = settings.showTripDistance
-            preferences[Keys.TRIP_LOG_DWELL_MINUTES] = settings.tripLogDwellMinutes
             preferences[Keys.SETTINGS_RETURN_DELAY] = settings.settingsReturnDelaySeconds
         }
     }
