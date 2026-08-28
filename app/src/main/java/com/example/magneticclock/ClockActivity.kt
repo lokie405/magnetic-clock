@@ -281,6 +281,7 @@ class ClockActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })
         unregisterReceiver(closeReceiver)
         unregisterReceiver(batteryReceiver)
         unregisterReceiver(bluetoothReceiver)
