@@ -1,7 +1,8 @@
 package com.example.magneticclock
 
-import android.annotation.SuppressLint
+import android.Manifest
 import android.app.*
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
@@ -10,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -18,11 +20,13 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.*
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.SettingsManager
+import com.example.magneticclock.data.TripManager
 import kotlinx.coroutines.*
 import kotlin.math.sqrt
 import kotlin.time.Duration.Companion.milliseconds
@@ -37,40 +41,52 @@ class MagneticSensorService : Service(), SensorEventListener {
     private var vibrator: Vibrator? = null
     
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private var activationStartTime: Long = 0
-    private var deactivationStartTime: Long = 0
-    private var isClockActive = false
-    private var isBluetoothConnected = false
+    
+    // States
+    private var isInCar = false // "In Car" mode (stays true during deactivation delay)
+    private var isBTDevicePhysicallyConnected = false // Physical BT connection status (instant)
+    private var isMagnetActive = false
+    private var isClockShowing = false
+    
+    // Trigger Timers
+    private var magnetActivationStartTime: Long = 0
+    private var magnetDeactivationStartTime: Long = 0
     private var btDeactivationJob: Job? = null
+    
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
-            com.example.magneticclock.data.TripManager.updateLocation(location)
+            TripManager.updateLocation(location)
         }
         override fun onProviderEnabled(provider: String) {}
         override fun onProviderDisabled(provider: String) {}
-        @Deprecated("Deprecated in Java")
-        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "STOP_SERVICE") {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
-    private val receiver = object : BroadcastReceiver() {
+    private val controlReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 "CLOCK_CLOSED_MANUALLY" -> {
-                    isClockActive = false
-                    activationStartTime = 0
-                    deactivationStartTime = 0
-                    com.example.magneticclock.data.TripManager.onMagnetRemoved(this@MagneticSensorService)
+                    isClockShowing = false
+                    // We don't reset isMagnetActive here, because magnet might still be present
                 }
                 "CLOCK_OPENED" -> {
-                    isClockActive = true
-                    activationStartTime = 0
-                    deactivationStartTime = 0
-                    com.example.magneticclock.data.TripManager.onClockOpened()
+                    isClockShowing = true
+                }
+                "REQUEST_IN_CAR_STATUS" -> {
+                    sendBroadcast(Intent("IN_CAR_STATUS_UPDATE").apply {
+                        setPackage(packageName)
+                        putExtra("is_in_car", isInCar)
+                    })
                 }
             }
         }
@@ -79,37 +95,41 @@ class MagneticSensorService : Service(), SensorEventListener {
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action
+            Log.d("MagneticClock", "Bluetooth Broadcast received: $action")
+            
             val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
             } else {
-                @Suppress("DEPRECATION")
-                intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                @Suppress("DEPRECATION") intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
             }
+            
+            val name = try {
+                if (ActivityCompat.checkSelfPermission(context!!, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                    device?.name
+                } else null
+            } catch (e: SecurityException) { null }
 
-            if (action == BluetoothDevice.ACTION_ACL_CONNECTED || action == BluetoothDevice.ACTION_ACL_DISCONNECTED) {
-                // Check if the affected device is our target
-                val deviceName = try { 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                        ActivityCompat.checkSelfPermission(context!!, android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                        null
+            when (action) {
+                BluetoothDevice.ACTION_ACL_CONNECTED -> {
+                    Log.i("MagneticClock", "ACL Connected: $name")
+                    if (isTargetDevice(name)) {
+                        updateInCarState(true)
                     } else {
-                        device?.name
-                    }
-                } catch (e: SecurityException) { null }
-
-                if (deviceName != null && (deviceName.trim().contains(currentSettings.bluetoothTriggerDeviceName.trim(), ignoreCase = true) || 
-                    deviceName.trim().contains("havit", ignoreCase = true))) {
-                    
-                    if (action == BluetoothDevice.ACTION_ACL_CONNECTED) {
-                        isBluetoothConnected = true
-                        updateMonitoringState()
-                    } else {
-                        // For disconnection, double check with profile proxy to be sure no other target device is connected
                         checkBluetoothStatus()
                     }
-                } else {
-                    // If we don't know the device name yet, check all connected devices
-                    checkBluetoothStatus()
+                }
+                BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                    Log.i("MagneticClock", "ACL Disconnected: $name")
+                    // Якщо від'єднався наш пристрій АБО ми не знаємо хто це - робимо повну перевірку
+                    if (isTargetDevice(name) || name == null) {
+                        checkBluetoothStatus()
+                    }
+                }
+                BluetoothAdapter.ACTION_STATE_CHANGED -> {
+                    val state = intent?.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                    if (state == BluetoothAdapter.STATE_OFF || state == BluetoothAdapter.STATE_TURNING_OFF) {
+                        updateInCarState(false)
+                    }
                 }
             }
         }
@@ -117,138 +137,117 @@ class MagneticSensorService : Service(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d("MagneticClock", "Service onCreate()")
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
-        // Switch to UNCALIBRATED for more stable trigger behavior
         magneticSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED) 
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
             
         settingsManager = SettingsManager(this)
         
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-            vibratorManager.defaultVibrator
+            (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
         } else {
-            @Suppress("DEPRECATION")
-            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            @Suppress("DEPRECATION") getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         }
 
         serviceScope.launch {
             settingsManager.settingsFlow.collect { newSettings ->
-                val wasMonitoringEnabled = currentSettings.isMonitoringEnabled
-                val oldDeviceName = currentSettings.bluetoothTriggerDeviceName
-                
+                val wasEnabled = currentSettings.isMonitoringEnabled
+                val oldTarget = currentSettings.bluetoothTriggerDeviceName
                 currentSettings = newSettings
                 
-                if (newSettings.isMonitoringEnabled != wasMonitoringEnabled || 
-                    newSettings.bluetoothTriggerDeviceName != oldDeviceName) {
-                    
-                    // Reset trigger state
-                    activationStartTime = 0
-                    deactivationStartTime = 0
-                    
-                    checkBluetoothStatus()
+                if (newSettings.isMonitoringEnabled != wasEnabled || oldTarget != newSettings.bluetoothTriggerDeviceName) {
+                    if (newSettings.isMonitoringEnabled) {
+                        checkBluetoothStatus()
+                    } else {
+                        performFullStop()
+                    }
                 }
+                updateSensorRegistration()
             }
         }
 
-        val filter = IntentFilter().apply {
+        ContextCompat.registerReceiver(this, controlReceiver, IntentFilter().apply {
             addAction("CLOCK_CLOSED_MANUALLY")
             addAction("CLOCK_OPENED")
-        }
-        
-        ContextCompat.registerReceiver(
-            this,
-            receiver,
-            filter,
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
+        }, ContextCompat.RECEIVER_NOT_EXPORTED)
 
+        // Android 14+ requires flags for system broadcasts too
         val btFilter = IntentFilter().apply {
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
         }
-        registerReceiver(bluetoothReceiver, btFilter)
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            registerReceiver(bluetoothReceiver, btFilter, RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(bluetoothReceiver, btFilter)
+        }
 
-        createNotificationChannel()
-        startForeground(1, createNotification())
+        createNotificationChannels()
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1, createMonitoringNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(1, createMonitoringNotification())
+        }
         
         checkBluetoothStatus()
     }
 
+    private fun updateSensorRegistration() {
+        // Датчик орієнтується на режим isInCar, який має затримку при вимкненні
+        if (currentSettings.isMonitoringEnabled && isInCar) {
+            registerSensor()
+        } else {
+            unregisterSensor()
+        }
+    }
+
     private fun checkBluetoothStatus() {
-        android.util.Log.d("MagneticClock", "Checking Bluetooth status...")
+        if (!currentSettings.isMonitoringEnabled) return
+
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val adapter = bluetoothManager.adapter
         
         if (adapter == null || !adapter.isEnabled) {
-            android.util.Log.d("MagneticClock", "Bluetooth adapter is null or disabled")
-            isBluetoothConnected = false
-            updateMonitoringState()
+            updateInCarState(false)
             return
         }
 
-        var targetFound = false
-        
-        // 1. Immediate check using BluetoothManager for already connected devices
-        val profiles = intArrayOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET)
-        for (profile in profiles) {
-            try {
-                val connectedDevices = bluetoothManager.getConnectedDevices(profile)
-                connectedDevices.forEach { device ->
-                    val name = try { 
-                        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                            device.name 
-                        } else null
-                    } catch (e: SecurityException) { null }
+        var foundInA2DP = false
+        var foundInHeadset = false
+        var checksCompleted = 0
 
-                    android.util.Log.d("MagneticClock", "Connected device via manager (profile $profile): $name")
-                    if (name != null && (name.trim().contains(currentSettings.bluetoothTriggerDeviceName.trim(), ignoreCase = true) || 
-                        name.trim().contains("havit", ignoreCase = true))) {
-                        android.util.Log.i("MagneticClock", "Target device matched! ($name)")
-                        targetFound = true
-                    }
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("MagneticClock", "Could not check profile $profile: ${e.message}")
-            }
-        }
-
-        if (targetFound) {
-            isBluetoothConnected = true
-            updateMonitoringState()
-            return
-        }
-
-        // 2. Asynchronous check via Profile Proxy as secondary check
         val profileListener = object : BluetoothProfile.ServiceListener {
             override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
                 try {
                     val devices = proxy?.connectedDevices
-                    devices?.forEach { device ->
-                        val name = try {
-                            if (ActivityCompat.checkSelfPermission(this@MagneticSensorService, android.Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                    val hasTarget = devices?.any { device ->
+                        val devName = try {
+                            if (ActivityCompat.checkSelfPermission(this@MagneticSensorService, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
                                 device.name
                             } else null
                         } catch (e: SecurityException) { null }
-
-                        if (name != null && (name.trim().contains(currentSettings.bluetoothTriggerDeviceName.trim(), ignoreCase = true) || 
-                            name.trim().contains("havit", ignoreCase = true))) {
-                            targetFound = true
-                        }
-                    }
+                        isTargetDevice(devName)
+                    } ?: false
+                    
+                    if (profile == BluetoothProfile.A2DP) foundInA2DP = hasTarget
+                    if (profile == BluetoothProfile.HEADSET) foundInHeadset = hasTarget
+                    
+                    Log.d("MagneticClock", "Profile $profile check: hasTarget=$hasTarget")
                 } catch (e: Exception) {
+                    Log.e("MagneticClock", "Error in profile $profile: ${e.message}")
                 } finally {
-                    if (targetFound) {
-                        isBluetoothConnected = true
-                        updateMonitoringState()
-                    }
+                    checksCompleted++
                     adapter.closeProfileProxy(profile, proxy)
-                }
-                
-                if (profile == BluetoothProfile.HEADSET && !targetFound) {
-                    isBluetoothConnected = false
-                    updateMonitoringState()
+                    
+                    // Коли обидва профілі перевірено
+                    if (checksCompleted >= 2) {
+                        updateInCarState(foundInA2DP || foundInHeadset)
+                    }
                 }
             }
             override fun onServiceDisconnected(profile: Int) {}
@@ -256,177 +255,293 @@ class MagneticSensorService : Service(), SensorEventListener {
 
         adapter.getProfileProxy(this, profileListener, BluetoothProfile.A2DP)
         adapter.getProfileProxy(this, profileListener, BluetoothProfile.HEADSET)
+        
+        // Fallback: миттєва перевірка через менеджер (на випадок якщо Proxy затримається)
+        try {
+            val a2dpDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.A2DP)
+            val hsDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.HEADSET)
+            if (a2dpDevices.any { isTargetDevice(it.name) } || hsDevices.any { isTargetDevice(it.name) }) {
+                updateInCarState(true)
+            }
+        } catch (e: Exception) {}
     }
 
-    @SuppressLint("MissingPermission")
-    private fun updateMonitoringState() {
-        val btTargetMet = isBluetoothConnected
-        val monitoringEnabled = currentSettings.isMonitoringEnabled
+    private fun isTargetDevice(name: String?): Boolean {
+        if (name == null) return false
         
-        if (monitoringEnabled && btTargetMet) {
-            // Bluetooth is active - cancel any pending deactivation
-            if (btDeactivationJob != null) {
-                android.util.Log.d("MagneticClock", "Bluetooth restored, cancelling deactivation timer")
-                btDeactivationJob?.cancel()
-                btDeactivationJob = null
-            }
-            registerSensor()
-            
-            // Start location updates when BT is connected
-            try {
-                locationManager.requestLocationUpdates(
-                    LocationManager.GPS_PROVIDER,
-                    1000L,
-                    1f,
-                    locationListener
-                )
-            } catch (e: SecurityException) {
-                android.util.Log.e("MagneticClock", "Location permission missing in Service")
-            }
-            
-            notifyNotification()
-        } else if (!monitoringEnabled) {
-            // Global monitoring off - deactivate immediately
+        // Нормалізація: все в нижній регістр та видалення всіх пробілів
+        val cleanName = name.lowercase().replace("\\s".toRegex(), "")
+        
+        // Список цілей для порівняння (теж без пробілів та в нижньому регістрі)
+        val targetSettings = currentSettings.bluetoothTriggerDeviceName.lowercase().replace("\\s".toRegex(), "")
+        
+        return cleanName.contains(targetSettings) || 
+               cleanName.contains("havit") || 
+               cleanName.contains("tw929") || 
+               cleanName.contains("fordfocus") ||
+               cleanName.contains("ford")
+    }
+
+    private fun updateInCarState(connected: Boolean) {
+        Log.d("MagneticClock", "updateInCarState: connected=$connected, current isInCar=$isInCar")
+        
+        isBTDevicePhysicallyConnected = connected
+        
+        sendBroadcast(Intent("IN_CAR_STATUS_UPDATE").apply {
+            setPackage(packageName)
+            putExtra("is_in_car", connected)
+        })
+
+        if (connected) {
             btDeactivationJob?.cancel()
             btDeactivationJob = null
-            performDeactivation()
+            
+            if (!isInCar) {
+                isInCar = true
+                Log.i("MagneticClock", ">>> inCar mode: STARTED <<<")
+                onInCarStarted()
+            } else {
+                updateSensorRegistration()
+            }
         } else {
-            // Bluetooth lost (btTargetMet is false) - start delay timer
-            if (btDeactivationJob == null) {
-                android.util.Log.d("MagneticClock", "Bluetooth lost, starting deactivation timer (${currentSettings.triggerDelayDeactivationMs}ms)")
+            // При розриві НЕ вимикаємо датчик миттєво, чекаємо таймер
+            if (isInCar && btDeactivationJob == null) {
+                Log.d("MagneticClock", "inCar lost, starting delay: ${currentSettings.inCarDeactivationDelayMs}ms")
                 btDeactivationJob = serviceScope.launch {
-                    notifyNotification()
-                    delay(currentSettings.triggerDelayDeactivationMs.milliseconds)
-                    android.util.Log.i("MagneticClock", "Deactivation timer finished, finalising trip")
-                    performDeactivation()
-                    btDeactivationJob = null
+                    updateNotification()
+                    delay(currentSettings.inCarDeactivationDelayMs.milliseconds)
+                    if (isActive) {
+                        isInCar = false
+                        Log.i("MagneticClock", ">>> inCar mode: ENDED <<<")
+                        onInCarEnded()
+                        btDeactivationJob = null
+                    }
                 }
             }
         }
+        updateNotification()
     }
 
-    private fun performDeactivation() {
-        // Vibrate on deactivation
-        vibrate(currentSettings.deactivationVibrationIntensity)
+    private fun onInCarStarted() {
+        Log.i("MagneticClock", "inCarStarted: Starting sensors and location")
+        
+        // Беремо WakeLock, щоб процесор не заснув при вимкненому екрані
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MagneticClock:SensorWakeLock").apply {
+                acquire()
+            }
+            Log.d("MagneticClock", "Partial WakeLock acquired")
+        } catch (e: Exception) { Log.e("MagneticClock", "WakeLock error: ${e.message}") }
 
-        // Stop location updates
+        updateSensorRegistration()
+        try {
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 1f, locationListener)
+        } catch (e: SecurityException) {
+            Log.e("MagneticClock", "Location permission missing in Service")
+        }
+    }
+
+    private fun onInCarEnded() {
+        Log.i("MagneticClock", "inCarEnded: Cleaning up")
+        
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+            Log.d("MagneticClock", "WakeLock released")
+        }
+        wakeLock = null
+
+        updateSensorRegistration()
         locationManager.removeUpdates(locationListener)
-        com.example.magneticclock.data.TripManager.currentSpeedKmH = 0f
+        TripManager.onBluetoothDisconnected(this)
         
-        // ALWAYS try to finalize trip when BT is officially considered lost
-        com.example.magneticclock.data.TripManager.onBluetoothDisconnected(this)
+        isMagnetActive = false
+        isClockShowing = false
+        magnetActivationStartTime = 0
+        magnetDeactivationStartTime = 0
         
-        isClockActive = false
-        unregisterSensor()
-        
-        // Send 0 magnitude to clear UI
-        val intent = Intent("MAGNETIC_FIELD_UPDATE").apply {
-            setPackage(packageName)
-            putExtra("magnitude", 0f)
-        }
-        sendBroadcast(intent)
-        notifyNotification()
+        sendBroadcast(Intent("CLOSE_CLOCK_ACTIVITY").apply { setPackage(packageName) })
+        updateNotification()
     }
 
-    private fun notifyNotification() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || 
-            ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(1, createNotification())
+    private fun performFullStop() {
+        if (TripManager.isTripActive) {
+            TripManager.onBluetoothDisconnected(this)
         }
+        onInCarEnded()
+        isInCar = false
+        updateNotification()
     }
 
     private fun registerSensor() {
+        Log.d("MagneticClock", "registerSensor() called")
         magneticSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
-        }
+            // Use DELAY_UI for better energy efficiency since it's just a clock
+            val registered = sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            Log.i("MagneticClock", "Magnetic sensor registration: $registered")
+        } ?: Log.e("MagneticClock", "CRITICAL: Magnetic sensor not found on this device!")
     }
 
     private fun unregisterSensor() {
+        Log.i("MagneticClock", "!!! STOPPING SENSOR: unregisterListener called !!!")
         sensorManager.unregisterListener(this)
+        // Clear UI magnitude
+        sendBroadcast(Intent("MAGNETIC_FIELD_UPDATE").apply {
+            setPackage(packageName)
+            putExtra("magnitude", 0f)
+        })
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "magnetic_monitor",
-                "Magnetic Field Monitor",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+    override fun onSensorChanged(event: SensorEvent?) {
+        // Датчик працює, поки активний режим isInCar (враховуючи затримку)
+        if (event == null || !isInCar || !currentSettings.isMonitoringEnabled) {
+            if (!isInCar || !currentSettings.isMonitoringEnabled) unregisterSensor() 
+            return
+        }
+        
+        val x = event.values[0]
+        val y = event.values[1]
+        val z = event.values[2]
+        val magnitude = sqrt((x * x) + (y * y) + (z * z))
+
+        sendBroadcast(Intent("MAGNETIC_FIELD_UPDATE").apply {
+            setPackage(packageName)
+            putExtra("magnitude", magnitude)
+        })
+
+        processMagnetTrigger(magnitude)
+    }
+
+    private fun processMagnetTrigger(magnitude: Float) {
+        if (!isMagnetActive) {
+            if (magnitude >= currentSettings.activationThreshold) {
+                magnetDeactivationStartTime = 0
+                if (magnetActivationStartTime == 0L) {
+                    magnetActivationStartTime = System.currentTimeMillis()
+                } else if (System.currentTimeMillis() - magnetActivationStartTime >= currentSettings.triggerDelayActivationMs) {
+                    isMagnetActive = true
+                    magnetActivationStartTime = 0
+                    vibrate(currentSettings.activationVibrationIntensity)
+                    startClockActivity()
+                }
+            } else {
+                magnetActivationStartTime = 0
+            }
+        } else {
+            if (magnitude <= currentSettings.deactivationThreshold) {
+                magnetActivationStartTime = 0
+                if (magnetDeactivationStartTime == 0L) {
+                    magnetDeactivationStartTime = System.currentTimeMillis()
+                } else if (System.currentTimeMillis() - magnetDeactivationStartTime >= currentSettings.triggerDelayDeactivationMs) {
+                    isMagnetActive = false
+                    magnetDeactivationStartTime = 0
+                    vibrate(currentSettings.deactivationVibrationIntensity)
+                    
+                    if (isClockShowing) {
+                        sendBroadcast(Intent("CLOSE_CLOCK_ACTIVITY").apply { setPackage(packageName) })
+                    }
+                }
+            } else {
+                magnetDeactivationStartTime = 0
+            }
         }
     }
 
-    private fun createNotification(): Notification {
+    private fun startClockActivity() {
+        val intent = Intent(this, ClockActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            // Додатковий прапорець для запуску поверх блокування
+            putExtra("show_on_lockscreen", true)
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this, 
+            0, 
+            intent, 
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Використовуємо High Priority Notification для пробудження
+        val notification = NotificationCompat.Builder(this, "clock_trigger")
+            .setContentTitle("Magnetic Clock")
+            .setContentText("Запуск годинника...")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setFullScreenIntent(pendingIntent, true) // Це ключовий момент для пробудження
+            .setAutoCancel(true)
+            .build()
+
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        // ACQUIRE_CAUSES_WAKEUP примусово вмикає екран
+        val wakeLock = powerManager.newWakeLock(
+            PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE, 
+            "MagneticClock:WakeLock"
+        )
+        wakeLock.acquire(5000) // Тримаємо екран 5 секунд для гарантованого запуску
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(2, notification)
+        
+        try { 
+            startActivity(intent) 
+        } catch (e: Exception) {
+            Log.e("MagneticClock", "StartActivity failed: ${e.message}")
+        }
+    }
+
+    private fun updateNotification() {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(1, createMonitoringNotification())
+        }
+    }
+
+    private fun createMonitoringNotification(): Notification {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        }
+        val pendingIntent = PendingIntent.getActivity(this, 1, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val clockIntent = Intent(this, ClockActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+        val clockPendingIntent = PendingIntent.getActivity(this, 2, clockIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val stopIntent = Intent(this, MagneticSensorService::class.java).apply { action = "STOP_SERVICE" }
+        val stopPendingIntent = PendingIntent.getService(this, 3, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
         val text = when {
-            btDeactivationJob != null -> "Bluetooth lost. Deactivating in ${currentSettings.triggerDelayDeactivationMs / 1000}s..."
-            !isBluetoothConnected -> "Waiting for Bluetooth connection (${currentSettings.bluetoothTriggerDeviceName})..."
-            else -> "Monitoring magnetic field..."
+            !currentSettings.isMonitoringEnabled -> "Програма вимкнена"
+            btDeactivationJob != null -> "Bluetooth втрачено. Вимкнення через ${currentSettings.inCarDeactivationDelayMs / 1000}с..."
+            !isInCar -> "Очікування Bluetooth (${currentSettings.bluetoothTriggerDeviceName})..."
+            isMagnetActive -> "Годинник активний (Магніт: Так)"
+            else -> "В авто. Очікування магніту..."
         }
 
-        return NotificationCompat.Builder(this, "magnetic_monitor")
+        val builder = NotificationCompat.Builder(this, "magnetic_monitor")
             .setContentTitle("Magnetic Clock")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
-            .build()
-    }
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(pendingIntent)
 
-    override fun onSensorChanged(event: SensorEvent?) {
-        if (event == null) return
-        
-        if (event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED || 
-            event.sensor.type == Sensor.TYPE_MAGNETIC_FIELD) {
-            
-            val x = event.values[0]
-            val y = event.values[1]
-            val z = event.values[2]
-            val magnitude = sqrt((x * x) + (y * y) + (z * z))
-
-            val intent = Intent("MAGNETIC_FIELD_UPDATE").apply {
-                setPackage(packageName)
-                putExtra("magnitude", magnitude)
-            }
-            sendBroadcast(intent)
-
-            checkTrigger(magnitude)
+        if (currentSettings.showShadeNotification && isInCar) {
+            builder.addAction(0, "Налаштування", pendingIntent)
+            builder.addAction(0, "Годинник", clockPendingIntent)
+            builder.addAction(0, "Зупинити", stopPendingIntent)
         }
+
+        return builder.build()
     }
 
-    private fun checkTrigger(magnitude: Float) {
-        if (!isClockActive) {
-            if (magnitude >= currentSettings.activationThreshold) {
-                deactivationStartTime = 0
-                if (activationStartTime == 0L) {
-                    activationStartTime = System.currentTimeMillis()
-                } else if (System.currentTimeMillis() - activationStartTime >= currentSettings.triggerDelayActivationMs) {
-                    vibrate(currentSettings.activationVibrationIntensity)
-                    startClockActivity()
-                    isClockActive = true
-                    activationStartTime = 0
-                }
-            } else {
-                activationStartTime = 0
-            }
-        } else {
-            // Logic for Deactivation
-            if (magnitude <= currentSettings.deactivationThreshold) {
-                activationStartTime = 0
-                if (deactivationStartTime == 0L) {
-                    deactivationStartTime = System.currentTimeMillis()
-                } else if (System.currentTimeMillis() - deactivationStartTime >= currentSettings.triggerDelayDeactivationMs) {
-                    vibrate(currentSettings.deactivationVibrationIntensity)
-                    isClockActive = false
-                    deactivationStartTime = 0
-                    
-                    com.example.magneticclock.data.TripManager.onMagnetRemoved(this)
-                    
-                    sendBroadcast(Intent("CLOSE_CLOCK_ACTIVITY").apply { setPackage(packageName) })
-                }
-            } else {
-                deactivationStartTime = 0
-            }
+    private fun createNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val monitorChannel = NotificationChannel("magnetic_monitor", "Magnetic Field Monitor", NotificationManager.IMPORTANCE_LOW)
+            val triggerChannel = NotificationChannel("clock_trigger", "Clock Trigger", NotificationManager.IMPORTANCE_HIGH)
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(monitorChannel)
+            manager.createNotificationChannel(triggerChannel)
         }
     }
 
@@ -435,81 +550,19 @@ class MagneticSensorService : Service(), SensorEventListener {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator?.vibrate(VibrationEffect.createOneShot(100, intensity))
             } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(100)
+                @Suppress("DEPRECATION") vibrator?.vibrate(100)
             }
-        }
-    }
-
-    private fun startClockActivity() {
-        // Vibrate on activation
-        vibrate(currentSettings.activationVibrationIntensity)
-
-        val intent = Intent(this, ClockActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        }
-
-        // For Android 10+ background activity starts, we use a Full Screen Intent Notification
-        val pendingIntent = PendingIntent.getActivity(
-            this, 
-            0, 
-            intent, 
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val channelId = "clock_trigger"
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Clock Trigger",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
-
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Magnetic Clock")
-            .setContentText("Launching clock...")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setFullScreenIntent(pendingIntent, true)
-            .setAutoCancel(true)
-            .build()
-
-        // Briefly wake up the screen
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        val wakeLock = powerManager.newWakeLock(
-            PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
-            "MagneticClock:WakeLock"
-        )
-        wakeLock.acquire(3000)
-
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(2, notification)
-        
-        // Fallback for unlocked state
-        try {
-            startActivity(intent)
-        } catch (e: Exception) {
-            android.util.Log.e("MagneticClock", "Background startActivity failed: ${e.message}")
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         super.onDestroy()
         unregisterSensor()
-        unregisterReceiver(receiver)
         unregisterReceiver(bluetoothReceiver)
+        unregisterReceiver(controlReceiver)
         serviceScope.cancel()
     }
 }

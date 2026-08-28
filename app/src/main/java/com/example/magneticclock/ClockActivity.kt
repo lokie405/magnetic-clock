@@ -1,22 +1,28 @@
 package com.example.magneticclock
 
-import android.content.*
-import androidx.core.content.ContextCompat
-import android.os.BatteryManager
-import android.os.Bundle
-import android.provider.Settings
-import android.view.WindowManager
 import android.Manifest
-import android.content.pm.PackageManager
+import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.app.KeyguardManager
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.content.*
+import android.content.pm.PackageManager
+import android.os.BatteryManager
 import android.os.Build
-import androidx.core.app.ActivityCompat
-import androidx.core.content.IntentCompat
+import android.os.Bundle
+import android.provider.Settings
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.SettingsManager
 import com.example.magneticclock.data.TripManager
@@ -34,9 +40,10 @@ class ClockActivity : ComponentActivity() {
     private var currentMagnitude = mutableFloatStateOf(0f)
     private var weatherData = mutableStateOf<WeatherData?>(null)
     private var phoneTemperature = mutableFloatStateOf(0f)
-    private var batteryLevel = mutableIntStateOf(0)
+    private var batteryLevel = mutableIntStateOf(100)
     private var bluetoothConnected = mutableStateOf(false)
     private var connectedDeviceName = mutableStateOf("")
+    private var isPowerSaveShown = false
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -45,56 +52,59 @@ class ClockActivity : ComponentActivity() {
                 val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
                 if ((level != -1) && (scale != -1)) {
                     batteryLevel.intValue = ((level * 100) / scale.toFloat()).toInt()
+                    checkBatteryWarning(batteryLevel.intValue)
                 }
-                
-                // Temperature is in tenths of a degree Celsius
                 val temp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
                 phoneTemperature.floatValue = temp / 10f
             }
         }
     }
 
+    private fun checkBatteryWarning(level: Int) {
+        if (level < 20 && !isPowerSaveShown) {
+            isPowerSaveShown = true
+            AlertDialog.Builder(this)
+                .setTitle("Низький заряд батареї")
+                .setMessage("Заряд менше 20%. Бажаєте завершити роботу програми для енергозбереження?")
+                .setPositiveButton("Так") { _, _ -> 
+                    sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })
+                    finish()
+                }
+                .setNegativeButton("Ні", null)
+                .show()
+        } else if (level >= 20) {
+            isPowerSaveShown = false
+        }
+    }
+
     private val closeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                "CLOSE_CLOCK_ACTIVITY" -> {
-                    // Exit to home screen
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    startActivity(homeIntent)
-                    finish()
-                }
+                "CLOSE_CLOCK_ACTIVITY" -> finish()
                 "MAGNETIC_FIELD_UPDATE" -> {
                     currentMagnitude.floatValue = intent.getFloatExtra("magnitude", 0f)
+                }
+                "IN_CAR_STATUS_UPDATE" -> {
+                    // Тепер значок на годиннику синхронізується з логікою сервісу (враховуючи затримку)
+                    bluetoothConnected.value = intent.getBooleanExtra("is_in_car", false)
+                    if (!bluetoothConnected.value) {
+                        connectedDeviceName.value = ""
+                    }
                 }
             }
         }
     }
 
     private val bluetoothReceiver = object : BroadcastReceiver() {
+        @SuppressLint("MissingPermission")
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                ActivityCompat.checkSelfPermission(this@ClockActivity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
-            ) {
-                return
-            }
-            
-            when (intent?.action) {
-                BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                    bluetoothConnected.value = true
-                    val device = IntentCompat.getParcelableExtra(intent, BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
-                    try {
-                        connectedDeviceName.value = device?.name ?: "Unknown Device"
-                    } catch (e: SecurityException) {
-                        connectedDeviceName.value = "Connected"
-                    }
-                }
-                BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                    bluetoothConnected.value = false
-                    connectedDeviceName.value = ""
-                }
+            // Залишаємо лише для отримання назви пристрою, колір значка тепер через IN_CAR_STATUS_UPDATE
+            if (intent?.action == BluetoothDevice.ACTION_ACL_CONNECTED) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    ActivityCompat.checkSelfPermission(this@ClockActivity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return
+                
+                val device = IntentCompat.getParcelableExtra(intent, BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                connectedDeviceName.value = device?.name ?: "Connected"
             }
         }
     }
@@ -102,14 +112,28 @@ class ClockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Window flags for AOD behavior
+        // Покращені прапорці для OnePlus/Android 15
         window.addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
         )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            keyguardManager.requestDismissKeyguard(this, null)
+        }
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         }
@@ -119,50 +143,34 @@ class ClockActivity : ComponentActivity() {
 
         sendBroadcast(Intent("CLOCK_OPENED").apply { setPackage(packageName) })
         
-        val batteryFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        registerReceiver(batteryReceiver, batteryFilter)
-
-        val bluetoothFilter = IntentFilter().apply {
+        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        registerReceiver(bluetoothReceiver, IntentFilter().apply {
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
-        }
-        registerReceiver(bluetoothReceiver, bluetoothFilter)
+        })
         
+        ContextCompat.registerReceiver(this, closeReceiver, IntentFilter().apply {
+            addAction("CLOSE_CLOCK_ACTIVITY")
+            addAction("MAGNETIC_FIELD_UPDATE")
+            addAction("IN_CAR_STATUS_UPDATE")
+        }, ContextCompat.RECEIVER_NOT_EXPORTED)
+
         checkInitialBluetoothStatus()
-        
-        ContextCompat.registerReceiver(
-            this,
-            closeReceiver,
-            IntentFilter().apply {
-                addAction("CLOSE_CLOCK_ACTIVITY")
-                addAction("MAGNETIC_FIELD_UPDATE")
-            },
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
 
         setContent {
             val scope = rememberCoroutineScope()
             val settingsState by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
             
-            // Apply brightness settings to the window
             LaunchedEffect(settingsState.isAutoBrightness, settingsState.brightness) {
                 val lp = window.attributes
-                if (settingsState.isAutoBrightness) {
-                    lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                } else {
-                    // screenBrightness takes 0.0 to 1.0
-                    lp.screenBrightness = settingsState.brightness.coerceIn(0.01f, 1.0f)
-                }
+                lp.screenBrightness = if (settingsState.isAutoBrightness) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE 
+                                     else settingsState.brightness.coerceIn(0.01f, 1.0f)
                 window.attributes = lp
             }
 
-            // Automatic screen on/off based on battery level
             LaunchedEffect(batteryLevel.intValue) {
-                if (batteryLevel.intValue > 20) {
-                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                } else {
-                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                }
+                if (batteryLevel.intValue > 20) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
 
             LaunchedEffect(settingsState.showWeather) {
@@ -172,10 +180,6 @@ class ClockActivity : ComponentActivity() {
                         delay(30.minutes)
                     }
                 }
-            }
-
-            LaunchedEffect(Unit) {
-                // Location updates are now handled by MagneticSensorService
             }
 
             ClockScreen(
@@ -190,9 +194,7 @@ class ClockActivity : ComponentActivity() {
                 isTripActive = TripManager.isTripActive,
                 bluetoothConnected = bluetoothConnected.value,
                 connectedDeviceName = connectedDeviceName.value,
-                onSettingsChanged = { newSettings ->
-                    scope.launch { settingsManager.updateSettings(newSettings) }
-                },
+                onSettingsChanged = { newSettings -> scope.launch { settingsManager.updateSettings(newSettings) } },
                 onSettingsClick = {
                     val intent = Intent(this@ClockActivity, MainActivity::class.java).apply {
                         putExtra("from_clock", true)
@@ -201,19 +203,10 @@ class ClockActivity : ComponentActivity() {
                     startActivity(intent)
                 },
                 onHotspotToggle = { toggleHotspot() },
-                onDoubleTap = {
-                    val intent = Intent(Intent.ACTION_VOICE_COMMAND).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    try {
-                        startActivity(intent)
-                    } catch (_: Exception) {
-                        // Voice command not supported or no assistant found
-                    }
-                },
-                onStartTrip = {
-                    TripManager.startTrip(0.0, 0.0) // Manual start (coords will be updated by GPS)
-                },
+                onDoubleTap = { launchVoiceAssistant() },
+                onSwipeDown = { openNotificationShade() },
+                onMockMove = { TripManager.toggleSpeedSimulation() },
+                onStartTrip = { TripManager.resetTrip() /* Manual start handled by speed now */ },
                 onPowerOff = {
                     scope.launch {
                         sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })
@@ -229,18 +222,31 @@ class ClockActivity : ComponentActivity() {
         }
     }
 
+    private fun launchVoiceAssistant() {
+        try {
+            startActivity(Intent(Intent.ACTION_VOICE_COMMAND).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK })
+        } catch (_: Exception) {}
+    }
+
+    @SuppressLint("WrongConstant")
+    private fun openNotificationShade() {
+        try {
+            val statusBarService = getSystemService("statusbar")
+            val statusBarManager = Class.forName("android.app.StatusBarManager")
+            val expandMethod = statusBarManager.getMethod("expandNotificationsPanel")
+            expandMethod.invoke(statusBarService)
+        } catch (_: Exception) {}
+    }
+
     private fun toggleHotspot() {
         val intents = listOf(
-            // Try very specific hotspot settings activities for different manufacturers
+            // Пріоритет: Режим модема (Tethering)
+            Intent("android.settings.TETHER_CONFIG_SETTINGS"),
+            // Налаштування Wi-Fi Hotspot
             Intent().setComponent(ComponentName("com.android.settings", "com.android.settings.Settings\$WifiApSettingsActivity")),
-            Intent().setComponent(ComponentName("com.android.settings", "com.android.settings.wifi.tether.WifiTetherSettings")),
-            Intent("android.settings.WIFI_AP_SETTINGS"),
-            // Fallback to Tethering settings
-            Intent().apply {
-                component = ComponentName("com.android.settings", "com.android.settings.Settings\$TetherSettingsActivity")
-            },
-            // Final fallbacks
+            // Загальні бездротові мережі
             Intent(Settings.ACTION_WIRELESS_SETTINGS),
+            // Загальні налаштування
             Intent(Settings.ACTION_SETTINGS)
         )
 
@@ -249,44 +255,27 @@ class ClockActivity : ComponentActivity() {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
                 return
-            } catch (_: Exception) {
-                // Continue to next intent
-            }
+            } catch (_: Exception) {}
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun checkInitialBluetoothStatus() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return
 
-        try {
-            val bluetoothManager = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
-            val adapter = bluetoothManager.adapter
-            if (adapter != null && adapter.isEnabled) {
-                adapter.getProfileProxy(this, object : BluetoothProfile.ServiceListener {
-                    override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
-                        try {
-                            val devices = proxy?.connectedDevices
-                            if (!devices.isNullOrEmpty()) {
-                                bluetoothConnected.value = true
-                                connectedDeviceName.value = devices[0].name ?: "Unknown Device"
-                            }
-                        } catch (e: SecurityException) {
-                            bluetoothConnected.value = true
-                            connectedDeviceName.value = "Connected"
-                        } finally {
-                            adapter.closeProfileProxy(profile, proxy)
-                        }
+        val adapter = (getSystemService(BLUETOOTH_SERVICE) as BluetoothManager).adapter
+        if (adapter?.isEnabled == true) {
+            adapter.getProfileProxy(this, object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
+                    proxy?.connectedDevices?.firstOrNull()?.let {
+                        bluetoothConnected.value = true
+                        connectedDeviceName.value = it.name ?: "Connected"
                     }
-
-                    override fun onServiceDisconnected(profile: Int) {}
-                }, BluetoothProfile.A2DP)
-            }
-        } catch (e: SecurityException) {
-            // Log or handle the lack of permission
+                    adapter.closeProfileProxy(profile, proxy)
+                }
+                override fun onServiceDisconnected(profile: Int) {}
+            }, BluetoothProfile.A2DP)
         }
     }
 

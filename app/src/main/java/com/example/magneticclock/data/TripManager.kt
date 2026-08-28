@@ -2,10 +2,7 @@ package com.example.magneticclock.data
 
 import android.content.Context
 import android.location.Location
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -16,38 +13,39 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 object TripManager {
-    private val scope = CoroutineScope(Dispatchers.Main)
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     var tripStartTime by mutableLongStateOf(0L)
     var tripDistance by mutableDoubleStateOf(0.0)
-    var isTripActive by mutableStateOf(false) // Means phone is on magnet and trip is ready
+    var isTripActive by mutableStateOf(false) // True if we should be recording (driveCar active)
     
     private var lastLocation: Location? = null
     var currentSpeedKmH by mutableStateOf(0f)
-    private var isMockingMovement = false
-    private var mockJob: Job? = null
-
+    
     private var startLat: Double = 0.0
     private var startLng: Double = 0.0
     private var endLat: Double = 0.0
     private var endLng: Double = 0.0
 
-    // Continuation Logic
-    var lastFinalizedTime by mutableLongStateOf(0L)
+    // Simulation fields
+    private var isSimulating = false
+    private var simulationJob: Job? = null
 
+    /**
+     * Called by Service whenever location changes.
+     */
     fun updateLocation(location: Location) {
-        if (isMockingMovement) return // Ignore real GPS if mocking
-
         val speed = location.speed * 3.6f
         currentSpeedKmH = speed
 
-        // Trigger start of counting only when moving or manual start
-        if (speed > 2.0f && isTripActive && tripStartTime == 0L) {
+        // Requirement: driveCar starts when speed >= 2 km/h 
+        // AND (implicitly) we are inCar and Magnet is on (service ensures updateLocation only called then)
+        if (speed >= 2.0f && tripStartTime == 0L) {
             startTrip(location.latitude, location.longitude)
         }
 
-        // Accumulate distance if counting has started
-        if (isTripActive && tripStartTime > 0L) {
+        // Accumulate distance if trip is active
+        if (tripStartTime > 0L) {
             lastLocation?.let { prev ->
                 val distanceMeters = location.distanceTo(prev)
                 if (distanceMeters > 0) {
@@ -60,90 +58,37 @@ object TripManager {
         lastLocation = location
     }
 
-    fun startTrip(lat: Double, lng: Double) {
-        if (tripStartTime == 0L) {
-            Log.d("TripManager", "Starting trip manually with simulation")
-            tripStartTime = System.currentTimeMillis()
-            startLat = lat
-            startLng = lng
-            isTripActive = true
-            
-            // Start simulation
-            isMockingMovement = true
-            currentSpeedKmH = 10f
-            mockJob?.cancel()
-            mockJob = scope.launch {
-                while (isMockingMovement && isTripActive) {
-                    delay(1000)
-                    // 10 km/h = 2.77 meters per second
-                    tripDistance += (2.77 / 1000.0)
-                }
-            }
-        }
+    private fun startTrip(lat: Double, lng: Double) {
+        Log.i("TripManager", "Drive started (driveCar). Speed: $currentSpeedKmH")
+        tripStartTime = System.currentTimeMillis()
+        startLat = lat
+        startLng = lng
+        isTripActive = true
     }
 
+    /**
+     * Called by Service when inCar ends (driveEnd).
+     */
     fun onBluetoothDisconnected(context: Context) {
-        Log.d("TripManager", "onBluetoothDisconnected called. isTripActive=$isTripActive, tripStartTime=$tripStartTime")
-        if (isTripActive && tripStartTime > 0L) {
+        Log.d("TripManager", "driveEnd: inCar finished. Saving if driveCar was active.")
+        if (tripStartTime > 0L) {
             finalizeAndSave(context)
         } else {
             resetTrip()
         }
-        context.sendBroadcast(android.content.Intent("CLOSE_CLOCK_ACTIVITY").apply { setPackage(context.packageName) })
     }
 
     fun onClockOpened() {
-        if (!isTripActive) {
-            // Prepare trip immediately on magnet contact, but don't count time yet
-            tripStartTime = 0L
-            tripDistance = 0.0
-            isTripActive = true
-        }
+        // We could prepare something here, but driveCar starts by speed
     }
 
     fun onMagnetRemoved(context: Context) {
-        // We no longer finalize on magnet removal, only on BT disconnect
-    }
-
-    fun resumeLastTrip(context: Context) {
-        val lastTrip = JournalManager.getLastTrip(context)
-        if (lastTrip != null) {
-            tripStartTime = lastTrip.startTime
-            tripDistance = lastTrip.distance
-            
-            val startParts = lastTrip.startLatLng.split(",")
-            if (startParts.size == 2) {
-                startLat = startParts[0].toDoubleOrNull() ?: 0.0
-                startLng = startParts[1].toDoubleOrNull() ?: 0.0
-            }
-            
-            val endParts = lastTrip.endLatLng.split(",")
-            if (endParts.size == 2) {
-                endLat = endParts[0].toDoubleOrNull() ?: 0.0
-                endLng = endParts[1].toDoubleOrNull() ?: 0.0
-            }
-
-            isTripActive = true
-            JournalManager.deleteLastTrip(context)
-        }
-    }
-
-    fun dismissResume() {
-        if (!isTripActive) {
-            tripStartTime = 0L
-            tripDistance = 0.0
-            isTripActive = true
-        }
+        // Requirement says driveCar ends when inCar ends, not magnet removal.
+        // However, if the user removes the phone, speed will eventually drop to 0, 
+        // but we keep the trip active until inCar (BT) is lost.
     }
 
     private fun finalizeAndSave(context: Context) {
-        if (!isTripActive || tripStartTime == 0L) {
-            Log.d("TripManager", "finalizeAndSave skipped: isTripActive=$isTripActive, startTime=$tripStartTime")
-            resetTrip()
-            return
-        }
-
-        // Capture data before reset
         val sTime = tripStartTime
         val dist = tripDistance
         val sLat = startLat
@@ -151,7 +96,7 @@ object TripManager {
         val eLat = endLat
         val eLng = endLng
         
-        Log.i("TripManager", "Finalizing trip: distance=$dist km")
+        Log.i("TripManager", "Finalizing trip: $dist km")
 
         val appContext = context.applicationContext
         scope.launch(Dispatchers.IO) {
@@ -159,6 +104,7 @@ object TripManager {
                 val endTime = System.currentTimeMillis()
                 val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(sTime))
                 
+                // Get addresses
                 val startAddr = JournalManager.getAddress(appContext, sLat, sLng)
                 val endAddr = JournalManager.getAddress(appContext, eLat, eLng)
 
@@ -174,12 +120,6 @@ object TripManager {
                 )
 
                 JournalManager.saveTrip(appContext, entry)
-                lastFinalizedTime = System.currentTimeMillis()
-                
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(appContext, "Поїздку завершено та збережено", Toast.LENGTH_LONG).show()
-                }
-                Log.d("TripManager", "Trip saved successfully")
             } catch (e: Exception) {
                 Log.e("TripManager", "Error saving trip: ${e.message}")
             }
@@ -189,12 +129,52 @@ object TripManager {
     }
 
     fun resetTrip() {
-        isMockingMovement = false
-        mockJob?.cancel()
-        mockJob = null
+        stopSpeedSimulation()
         tripStartTime = 0L
         tripDistance = 0.0
         isTripActive = false
         lastLocation = null
+        currentSpeedKmH = 0f
+    }
+
+    fun toggleSpeedSimulation() {
+        if (isSimulating) {
+            stopSpeedSimulation()
+        } else {
+            startSpeedSimulation()
+        }
+    }
+
+    private fun startSpeedSimulation() {
+        isSimulating = true
+        currentSpeedKmH = 50f
+        
+        // Ensure trip starts if it hasn't already (logic normally requires speed >= 2)
+        if (tripStartTime == 0L) {
+            // Mock coordinates (e.g., center of Kyiv for testing)
+            startTrip(50.4501, 30.5234)
+        }
+
+        simulationJob?.cancel()
+        simulationJob = scope.launch {
+            while (isSimulating) {
+                delay(1000)
+                // 50 km/h = 13.88 meters per second
+                tripDistance += (13.88 / 1000.0)
+                
+                // Update end coordinates slightly to simulate movement for geocoder
+                endLat = 50.4501 + (tripDistance / 111.0) // Very rough approximation
+                endLng = 30.5234
+            }
+        }
+        Log.d("TripManager", "Speed simulation started: 50 km/h")
+    }
+
+    private fun stopSpeedSimulation() {
+        isSimulating = false
+        simulationJob?.cancel()
+        simulationJob = null
+        currentSpeedKmH = 0f
+        Log.d("TripManager", "Speed simulation stopped")
     }
 }

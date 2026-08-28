@@ -1,35 +1,43 @@
 package com.example.magneticclock.data
 
 data class AppSettings(
-    val brightness: Float = 0.5f,
-    val isAutoBrightness: Boolean = true,
+    val isMonitoringEnabled: Boolean = true,
+    val isDarkMode: Boolean = true,
+    val showShadeNotification: Boolean = true,
+    
     val activationThreshold: Float = 60f,
     val deactivationThreshold: Float = 50f,
+    
     val triggerDelayActivationMs: Long = 1000L,
     val triggerDelayDeactivationMs: Long = 1000L,
-    val isMonitoringEnabled: Boolean = true,
+    val inCarDeactivationDelayMs: Long = 2000L,
+    val settingsReturnDelaySeconds: Float = 5.0f,
+    
+    val clockSizeSp: Int = 180,
     val clockFont: String = "Default",
     val dateFont: String = "Default",
     val batteryFont: String = "Default",
-    val clockSizeSp: Int = 64,
-    val dateSizeSp: Int = 24,
-    val batterySizeSp: Int = 18,
+    val customFonts: Set<String> = emptySet(),
+    
+    val showWeather: Boolean = true,
+    val showSpeed: Boolean = true,
+    val showMagneticField: Boolean = false,
+    val showConnectedDeviceName: Boolean = true,
+    val showUnreadNotificationIcons: Boolean = false,
+    
+    val brightness: Float = 0.5f,
+    val isAutoBrightness: Boolean = true,
+    val bluetoothTriggerDeviceName: String = "Ford Focus 3",
+    
+    val layoutIndex: Int = 0,
     val isOnePlusStyle: Boolean = false,
-    val isDarkMode: Boolean = true,
-    val activationVibrationIntensity: Int = 0,
-    val deactivationVibrationIntensity: Int = 0,
+    val showTripTime: Boolean = true,
+    val showTripDistance: Boolean = true,
+    
     val customClockFontPath: String? = null,
     val customDateFontPath: String? = null,
     val customBatteryFontPath: String? = null,
-    val customFonts: Set<String> = emptySet(),
-    val showMagneticField: Boolean = false,
-    val showWeather: Boolean = false,
-    val showSpeed: Boolean = false,
-    val speedSizeSp: Int = 24,
-    val showPhoneTemperature: Boolean = false,
-    val bluetoothTriggerDeviceName: String = "Ford Focus 3",
-    val layoutIndex: Int = 0,
-    val showTripTime: Boolean = false,
-    val showTripDistance: Boolean = false,
-    val settingsReturnDelaySeconds: Float = 5.0f,
+    
+    val activationVibrationIntensity: Int = 0,
+    val deactivationVibrationIntensity: Int = 0,
 )

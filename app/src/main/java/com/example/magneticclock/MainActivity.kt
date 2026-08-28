@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.*
 import android.content.pm.PackageManager
 import android.os.Build
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,8 +22,8 @@ import androidx.core.content.ContextCompat
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.JournalManager
 import com.example.magneticclock.data.SettingsManager
-import com.example.magneticclock.ui.JournalScreen
 import com.example.magneticclock.ui.SettingsScreen
+import com.example.magneticclock.ui.TripListScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -29,6 +31,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var settingsManager: SettingsManager
     private var currentMagnitude = mutableFloatStateOf(0f)
+    private var isInCarStatus = mutableStateOf(false)
     private var currentScreen = mutableStateOf("settings") // "settings" or "journal"
     
     private var lastInteractionTime = mutableLongStateOf(System.currentTimeMillis())
@@ -53,13 +56,11 @@ class MainActivity : ComponentActivity() {
                 "MAGNETIC_FIELD_UPDATE" -> {
                     currentMagnitude.floatValue = intent.getFloatExtra("magnitude", 0f)
                 }
+                "IN_CAR_STATUS_UPDATE" -> {
+                    isInCarStatus.value = intent.getBooleanExtra("is_in_car", false)
+                }
                 "CLOSE_CLOCK_ACTIVITY" -> {
-                    // Minimize the app to home screen
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    startActivity(homeIntent)
+                    finishAffinity()
                 }
             }
         }
@@ -80,57 +81,55 @@ class MainActivity : ComponentActivity() {
         
         val filter = IntentFilter().apply {
             addAction("MAGNETIC_FIELD_UPDATE")
+            addAction("IN_CAR_STATUS_UPDATE")
             addAction("CLOSE_CLOCK_ACTIVITY")
         }
         
-        ContextCompat.registerReceiver(
-            this, 
-            receiver, 
-            filter, 
-            ContextCompat.RECEIVER_NOT_EXPORTED,
-        )
+        ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+
+        // Request initial status from service
+        sendBroadcast(Intent("REQUEST_IN_CAR_STATUS").apply { setPackage(packageName) })
 
         setContent {
             val scope = rememberCoroutineScope()
-            val settingsState = settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+            val settingsState by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+            val trips by produceState(initialValue = emptyList()) {
+                value = JournalManager.loadTrips(this@MainActivity)
+            }
             
             val permissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestMultiplePermissions()
             ) { _ -> }
 
             LaunchedEffect(Unit) {
+                val permissions = mutableListOf<String>()
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val permissions = mutableListOf<String>()
                     if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                         permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-                        }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        permissions.add(Manifest.permission.POST_NOTIFICATIONS)
                     }
-                    if (permissions.isNotEmpty()) {
-                        permissionLauncher.launch(permissions.toTypedArray())
-                    }
+                }
+                if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                    permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+                }
+                if (permissions.isNotEmpty()) {
+                    permissionLauncher.launch(permissions.toTypedArray())
                 }
             }
 
             if (isFromClock.value) {
                 LaunchedEffect(lastInteractionTime.longValue) {
-                    delay((settingsState.value.settingsReturnDelaySeconds * 1000).toLong())
+                    delay((settingsState.settingsReturnDelaySeconds * 1000).toLong())
                     finish()
                 }
             }
 
-            // Initialize Mock Data once
-            LaunchedEffect(Unit) {
-                if (JournalManager.loadTrips(this@MainActivity).isEmpty()) {
-                    JournalManager.generateMockData(this@MainActivity)
-                }
-            }
-
             MaterialTheme(
-                colorScheme = if (settingsState.value.isDarkMode) darkColorScheme() else lightColorScheme(),
+                colorScheme = if (settingsState.isDarkMode) darkColorScheme() else lightColorScheme(),
             ) {
                 Surface(
                     color = MaterialTheme.colorScheme.background,
@@ -145,35 +144,40 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                 ) {
-                    if (currentScreen.value == "journal") {
-                        BackHandler {
-                            currentScreen.value = "settings"
-                            updateInteractionTime()
+                    when (currentScreen.value) {
+                        "journal" -> {
+                            BackHandler { currentScreen.value = "settings"; updateInteractionTime() }
+                            TripListScreen(trips = trips, onBack = { currentScreen.value = "settings"; updateInteractionTime() })
                         }
-                        JournalScreen(onBack = { 
-                            currentScreen.value = "settings"
-                            updateInteractionTime()
-                        })
-                    } else {
-                        SettingsScreen(
-                            settings = settingsState.value,
-                            magnitude = currentMagnitude.floatValue,
-                            onSettingsChanged = { newSettings ->
-                                updateInteractionTime()
-                                scope.launch { settingsManager.updateSettings(newSettings) }
-                            },
-                            onPreviewClick = {
-                                if (isFromClock.value) finish()
-                                else {
-                                    val intent = Intent(this@MainActivity, ClockActivity::class.java)
+                        else -> {
+                            SettingsScreen(
+                                settings = settingsState,
+                                magnitude = currentMagnitude.floatValue,
+                                isInCar = isInCarStatus.value,
+                                onSettingsChanged = { newSettings ->
+                                    updateInteractionTime()
+                                    scope.launch { settingsManager.updateSettings(newSettings) }
+                                },
+                                onPreviewClick = {
+                                    if (isFromClock.value) finish()
+                                    else {
+                                        startActivity(Intent(this@MainActivity, ClockActivity::class.java))
+                                    }
+                                },
+                                onViewJournal = {
+                                    updateInteractionTime()
+                                    currentScreen.value = "journal"
+                                },
+                                onOpenOverlaySettings = {
+                                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                                    startActivity(intent)
+                                },
+                                onOpenBatterySettings = {
+                                    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
                                     startActivity(intent)
                                 }
-                            },
-                            onViewJournal = {
-                                updateInteractionTime()
-                                currentScreen.value = "journal"
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
