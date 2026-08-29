@@ -205,6 +205,13 @@ class ClockActivity : ComponentActivity() {
                 onHotspotToggle = { toggleHotspot() },
                 onDoubleTap = { launchVoiceAssistant() },
                 onSwipeDown = { openNotificationShade() },
+                onSwipeUp = {
+                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(homeIntent)
+                },
                 onMockMove = { TripManager.toggleSpeedSimulation() },
                 onStartTrip = { TripManager.resetTrip() /* Manual start handled by speed now */ },
                 onPowerOff = {

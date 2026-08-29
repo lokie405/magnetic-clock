@@ -49,6 +49,7 @@ fun ClockScreen(
     onHotspotToggle: () -> Unit,
     onDoubleTap: () -> Unit,
     onSwipeDown: () -> Unit,
+    onSwipeUp: () -> Unit,
     onMockMove: () -> Unit,
     onStartTrip: () -> Unit,
     onPowerOff: () -> Unit,
@@ -91,6 +92,9 @@ fun ClockScreen(
                 detectDragGestures { change, dragAmount ->
                     if (dragAmount.y > 50) {
                         onSwipeDown()
+                        change.consume()
+                    } else if (dragAmount.y < -50) {
+                        onSwipeUp()
                         change.consume()
                     }
                 }
