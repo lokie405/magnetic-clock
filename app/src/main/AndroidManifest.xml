@@ -61,22 +61,22 @@
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.MagneticClock"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ClockActivity"
-            android:exported="false"
+            android:exported="true"
             android:showOnLockScreen="true"
             android:showForAllUsers="true"
             android:turnScreenOn="true"
             android:theme="@style/Theme.MagneticClock.FullScreen"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
-            android:launchMode="singleInstance" />
+            android:launchMode="singleInstance">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
     </application>
 

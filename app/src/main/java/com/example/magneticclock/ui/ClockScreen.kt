@@ -2,6 +2,7 @@ package com.example.magneticclock.ui
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -20,8 +21,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import android.app.ActivityOptions
+import android.os.Build
 import com.example.magneticclock.NotificationService
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.WeatherData
@@ -46,7 +52,6 @@ fun ClockScreen(
     connectedDeviceName: String,
     onSettingsChanged: (AppSettings) -> Unit,
     onSettingsClick: () -> Unit,
-    onHotspotToggle: () -> Unit,
     onDoubleTap: () -> Unit,
     onSwipeDown: () -> Unit,
     onSwipeUp: () -> Unit,
@@ -55,6 +60,7 @@ fun ClockScreen(
     onPowerOff: () -> Unit,
     onClose: () -> Unit,
 ) {
+    val context = LocalContext.current
     var currentTime by remember { mutableStateOf(Calendar.getInstance().time) }
     var offset by remember { mutableStateOf(androidx.compose.ui.unit.IntOffset(0, 0)) }
     
@@ -81,29 +87,49 @@ fun ClockScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
-            .offset { offset }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { onSettingsClick() },
-                    onDoubleTap = { onDoubleTap() }
-                )
-            }
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    if (dragAmount.y > 50) {
-                        onSwipeDown()
-                        change.consume()
-                    } else if (dragAmount.y < -50) {
-                        onSwipeUp()
-                        change.consume()
-                    }
-                }
-            },
+            .offset { offset },
         contentAlignment = Alignment.Center,
     ) {
+        // Фоновий шар для жестів (налаштування, голос, свайпи)
+        // Він займає весь екран, але значки сповіщень будуть ПОВЕРХ нього
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = { onDoubleTap() }
+                    )
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        if (dragAmount.y > 50) {
+                            onSwipeDown()
+                            change.consume()
+                        } else if (dragAmount.y < -50) {
+                            onSwipeUp()
+                            change.consume()
+                        }
+                    }
+                }
+        )
+
         // Top Start: Weather
         if (settings.showWeather && weather != null) {
-            Row(modifier = Modifier.align(Alignment.TopStart).padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(24.dp)
+                    .clickable {
+                        try {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                data = android.net.Uri.parse("https://www.google.com/search?q=weather")
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        } catch (_: Exception) {}
+                    }, 
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(imageVector = getWeatherIcon(weather.weatherCode), contentDescription = null, tint = getWeatherColor(weather.weatherCode), modifier = Modifier.size(32.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "${weather.temperature.toInt()}°C", color = contentColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -148,10 +174,10 @@ fun ClockScreen(
 
         // Main Layouts
         when (settings.layoutIndex) {
-            1 -> SpeedFocusLayout(settings, currentTime, speed, tripStartTime, tripDistance, isTripActive, contentColor, secondaryColor, onHotspotToggle, onMockMove, onStartTrip, onPowerOff, onSettingsChanged)
-            2 -> BigDigitalLayout(settings, currentTime, speed, contentColor, onHotspotToggle, onMockMove, onPowerOff, onSettingsChanged)
-            3 -> MinimalistLayout(settings, currentTime, speed, contentColor, secondaryColor, onHotspotToggle, onMockMove, onPowerOff, onSettingsChanged)
-            else -> ClassicLayout(settings, currentTime, speed, tripStartTime, tripDistance, isTripActive, contentColor, secondaryColor, onHotspotToggle, onMockMove, onPowerOff, onSettingsChanged)
+            1 -> SpeedFocusLayout(settings, currentTime, speed, tripStartTime, tripDistance, isTripActive, contentColor, secondaryColor, onMockMove, onStartTrip, onPowerOff, onSettingsClick, onSettingsChanged)
+            2 -> BigDigitalLayout(settings, currentTime, speed, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
+            3 -> MinimalistLayout(settings, currentTime, speed, contentColor, secondaryColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
+            else -> ClassicLayout(settings, currentTime, speed, tripStartTime, tripDistance, isTripActive, contentColor, secondaryColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
         }
     }
 }
@@ -167,7 +193,7 @@ fun PhoneTempInfo(temp: Float) {
 }
 
 @Composable
-fun ClassicLayout(settings: AppSettings, currentTime: Date, speed: Float, tripStartTime: Long, tripDistance: Double, isTripActive: Boolean, contentColor: Color, secondaryColor: Color, onHotspotToggle: () -> Unit, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
+fun ClassicLayout(settings: AppSettings, currentTime: Date, speed: Float, tripStartTime: Long, tripDistance: Double, isTripActive: Boolean, contentColor: Color, secondaryColor: Color, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         if (settings.showUnreadNotificationIcons) NotificationIconsRow()
         TimeRow(settings, currentTime, contentColor)
@@ -180,7 +206,7 @@ fun ClassicLayout(settings: AppSettings, currentTime: Date, speed: Float, tripSt
         }
 
         Spacer(Modifier.height(32.dp))
-        ControlButtonsRow(settings, contentColor, onHotspotToggle, onMockMove, onPowerOff, onSettingsChanged)
+        ControlButtonsRow(settings, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
         
         AnimatedVisibility(visible = !settings.isAutoBrightness) {
             Column {
@@ -210,7 +236,7 @@ fun TripStats(startTime: Long, distance: Double, color: Color) {
 }
 
 @Composable
-fun SpeedFocusLayout(settings: AppSettings, currentTime: Date, speed: Float, tripStartTime: Long, tripDistance: Double, isTripActive: Boolean, contentColor: Color, secondaryColor: Color, onHotspotToggle: () -> Unit, onMockMove: () -> Unit, onStartTrip: () -> Unit, onPowerOff: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
+fun SpeedFocusLayout(settings: AppSettings, currentTime: Date, speed: Float, tripStartTime: Long, tripDistance: Double, isTripActive: Boolean, contentColor: Color, secondaryColor: Color, onMockMove: () -> Unit, onStartTrip: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(currentTime), color = contentColor, fontSize = (settings.clockSizeSp * 0.5).sp, fontWeight = FontWeight.Bold, fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath))
         
@@ -223,12 +249,12 @@ fun SpeedFocusLayout(settings: AppSettings, currentTime: Date, speed: Float, tri
         }
         
         Spacer(Modifier.height(32.dp))
-        ControlButtonsRow(settings, contentColor, onHotspotToggle, onMockMove, onPowerOff, onSettingsChanged)
+        ControlButtonsRow(settings, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
     }
 }
 
 @Composable
-fun BigDigitalLayout(settings: AppSettings, currentTime: Date, speed: Float, contentColor: Color, onHotspotToggle: () -> Unit, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
+fun BigDigitalLayout(settings: AppSettings, currentTime: Date, speed: Float, contentColor: Color, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         val hour = SimpleDateFormat("HH", Locale.getDefault()).format(currentTime)
         val min = SimpleDateFormat("mm", Locale.getDefault()).format(currentTime)
@@ -236,31 +262,34 @@ fun BigDigitalLayout(settings: AppSettings, currentTime: Date, speed: Float, con
         Text(text = min, color = if (settings.isOnePlusStyle && min.startsWith("1")) Color.Red else contentColor, fontSize = settings.clockSizeSp.sp, fontWeight = FontWeight.Black, fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath))
         if (settings.showSpeed) Text("${speed.toInt()} km/h", color = Color(0xFF00E676), fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(24.dp))
-        ControlButtonsRow(settings, contentColor, onHotspotToggle, onMockMove, onPowerOff, onSettingsChanged)
+        ControlButtonsRow(settings, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
     }
 }
 
 @Composable
-fun MinimalistLayout(settings: AppSettings, currentTime: Date, speed: Float, contentColor: Color, secondaryColor: Color, onHotspotToggle: () -> Unit, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
+fun MinimalistLayout(settings: AppSettings, currentTime: Date, speed: Float, contentColor: Color, secondaryColor: Color, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
     Box(Modifier.fillMaxSize().padding(32.dp)) {
         Column(Modifier.align(Alignment.BottomStart)) {
             Text(text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(currentTime), color = contentColor, fontSize = (settings.clockSizeSp * 0.7).sp, fontWeight = FontWeight.Light, fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath))
             if (settings.showSpeed) Text(text = "${speed.toInt()} km/h", color = secondaryColor, fontSize = 24.sp)
         }
         Box(Modifier.align(Alignment.BottomEnd)) {
-            ControlButtonsRow(settings, contentColor.copy(alpha = 0.5f), onHotspotToggle, onMockMove, onPowerOff, onSettingsChanged)
+            ControlButtonsRow(settings, contentColor.copy(alpha = 0.5f), onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
         }
     }
 }
 
 @Composable
-fun ControlButtonsRow(settings: AppSettings, contentColor: Color, onHotspotToggle: () -> Unit, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
+fun ControlButtonsRow(settings: AppSettings, contentColor: Color, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = { onSettingsChanged(settings.copy(isAutoBrightness = !settings.isAutoBrightness)) }) {
             Icon(Icons.Default.BrightnessAuto, contentDescription = null, tint = if (settings.isAutoBrightness) Color.Green else contentColor)
         }
         Spacer(Modifier.width(24.dp))
-        IconButton(onClick = onHotspotToggle) { Icon(Icons.Default.WifiTethering, contentDescription = null, tint = contentColor) }
+        // Settings Gear Button
+        IconButton(onClick = onSettingsClick) {
+            Icon(Icons.Default.Settings, contentDescription = "Налаштування", tint = contentColor)
+        }
         Spacer(Modifier.width(24.dp))
         // Mock Movement Button
         IconButton(onClick = onMockMove) { 
@@ -280,26 +309,92 @@ fun BrightnessSliderOnly(settings: AppSettings, contentColor: Color, onSettingsC
 fun NotificationIconsRow() {
     val context = LocalContext.current
     val activeNotifications = NotificationService.notificationList
-    if (activeNotifications.isNotEmpty()) {
-        LazyRow(modifier = Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(activeNotifications.distinctBy { it.packageName }) { sbn ->
-                NotificationIcon(context, sbn.packageName)
+    
+    // Фільтруємо власне сповіщення програми та показуємо всі інші (включаючи беззвучні)
+    val filteredNotifications = remember(activeNotifications.size) {
+        activeNotifications.filter { it.packageName != context.packageName }
+    }
+
+    if (filteredNotifications.isNotEmpty()) {
+        LazyRow(modifier = Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(filteredNotifications) { sbn ->
+                NotificationIcon(context, sbn)
             }
         }
     }
 }
 
 @Composable
-fun NotificationIcon(context: android.content.Context, packageName: String) {
-    val icon = remember(packageName) {
+fun NotificationIcon(context: android.content.Context, sbn: android.service.notification.StatusBarNotification) {
+    val packageName = sbn.packageName
+    val iconId = sbn.id
+    
+    val icon = remember(packageName, iconId, sbn.postTime) {
         try {
+            // 1. Спробуємо отримати "Великий значок" (це зазвичай аватар або іконка події)
+            val largeIcon = sbn.notification.getLargeIcon()?.loadDrawable(context)
+            if (largeIcon != null) {
+                return@remember largeIcon.toBitmap().asImageBitmap()
+            }
+            
+            // 2. Якщо великого немає, спробуємо "Маленький значок" (той, що в статус-барі)
+            val smallIcon = sbn.notification.smallIcon?.loadDrawable(context)
+            if (smallIcon != null) {
+                return@remember smallIcon.toBitmap().asImageBitmap()
+            }
+            
+            // 3. Крайній випадок - іконка самої програми
             context.packageManager.getApplicationIcon(packageName).toBitmap().asImageBitmap()
         } catch (_: Exception) {
             null
         }
     }
+    
     icon?.let {
-        androidx.compose.foundation.Image(bitmap = it, contentDescription = null, modifier = Modifier.size(24.dp))
+        androidx.compose.foundation.Image(
+            bitmap = it, 
+            contentDescription = null, 
+            modifier = Modifier
+                .size(44.dp) // Великий розмір для зручності
+                .clickable {
+                    val packageName = sbn.packageName
+                    val contentIntent = sbn.notification.contentIntent
+                    android.util.Log.d("MagneticClock", "Клік по іконці: $packageName")
+                    
+                    try {
+                        val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            ActivityOptions.makeBasic()
+                                .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                                .toBundle()
+                        } else null
+
+                        if (contentIntent != null) {
+                            // 1. Відправляємо наказ відкрити чат/програму через IntentSender
+                            (context as? android.app.Activity)?.startIntentSender(
+                                contentIntent.intentSender,
+                                null,
+                                0, 0, 0,
+                                options
+                            )
+                            
+                            // 2. МИТТЄВО згортаємо годинник, щоб побачити результат
+                            (context as? android.app.Activity)?.moveTaskToBack(true)
+                            
+                            android.util.Log.i("MagneticClock", "IntentSender відправлено, годинник згорнуто")
+                        } else {
+                            // Якщо немає прямого посилання (contentIntent), просто відкриваємо програму
+                            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+                            launchIntent?.let { intent -> 
+                                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent, options) 
+                                (context as? android.app.Activity)?.moveTaskToBack(true)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("MagneticClock", "Критична помилка при відкритті: ${e.message}")
+                    }
+                }
+        )
     }
 }
 

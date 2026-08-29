@@ -486,11 +486,9 @@ class MagneticSensorService : Service(), SensorEventListener {
     }
 
     private fun createMonitoringNotification(): Notification {
-        // Налаштовуємо Intent залежно від стану
-        val targetIntent = if (isClockModeTriggered) {
-            Intent(this, ClockActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP) }
-        } else {
-            Intent(this, MainActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT) }
+        // Тепер сповіщення завжди веде до годинника, згідно з вашим запитом
+        val targetIntent = Intent(this, ClockActivity::class.java).apply { 
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP) 
         }
         
         val pendingIntent = PendingIntent.getActivity(

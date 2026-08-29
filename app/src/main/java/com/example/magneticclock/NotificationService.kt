@@ -27,11 +27,13 @@ class NotificationService : NotificationListenerService() {
 
     private fun refreshNotifications() {
         try {
-            // Some devices might throw an exception if the listener is not yet fully initialized
             val currentNotifications = try { activeNotifications } catch (_: Exception) { null }
             
             notificationList.clear()
             if (currentNotifications != null) {
+                currentNotifications.forEach { sbn ->
+                    android.util.Log.d("MagneticClock", "Захоплено сповіщення: ${sbn.packageName} | Importance: ${sbn.notification.priority}")
+                }
                 notificationList.addAll(currentNotifications.toList())
             }
         } catch (e: Exception) {

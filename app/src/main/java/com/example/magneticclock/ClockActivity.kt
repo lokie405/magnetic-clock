@@ -12,9 +12,10 @@ import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.core.app.ActivityCompat
@@ -141,6 +142,14 @@ class ClockActivity : ComponentActivity() {
         settingsManager = SettingsManager(this)
         weatherManager = WeatherManager(this)
 
+        // Start background service to ensure monitoring is active
+        val serviceIntent = Intent(this, MagneticSensorService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+
         sendBroadcast(Intent("CLOCK_OPENED").apply { setPackage(packageName) })
         
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
@@ -161,6 +170,31 @@ class ClockActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             val settingsState by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
             
+            // Handle initial permissions if needed
+            val permissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestMultiplePermissions()
+            ) { _ -> }
+
+            LaunchedEffect(Unit) {
+                val permissions = mutableListOf<String>()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (ActivityCompat.checkSelfPermission(this@ClockActivity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                        permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (ActivityCompat.checkSelfPermission(this@ClockActivity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+                if (ActivityCompat.checkSelfPermission(this@ClockActivity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                    permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+                }
+                if (permissions.isNotEmpty()) {
+                    permissionLauncher.launch(permissions.toTypedArray())
+                }
+            }
+
             LaunchedEffect(settingsState.isAutoBrightness, settingsState.brightness) {
                 val lp = window.attributes
                 lp.screenBrightness = if (settingsState.isAutoBrightness) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE 
@@ -202,7 +236,6 @@ class ClockActivity : ComponentActivity() {
                     }
                     startActivity(intent)
                 },
-                onHotspotToggle = { toggleHotspot() },
                 onDoubleTap = { launchVoiceAssistant() },
                 onSwipeDown = { openNotificationShade() },
                 onSwipeUp = {
@@ -230,8 +263,34 @@ class ClockActivity : ComponentActivity() {
     }
 
     private fun launchVoiceAssistant() {
+        val intents = listOf(
+            // Пріоритет 1: Прямий запуск Gemini Live (режим "трьох відрізків")
+            Intent("com.google.android.apps.search.assistant.action.START_GEMINI_LIVE").setPackage("com.google.android.googlequicksearchbox"),
+            
+            // Пріоритет 2: Gemini Live (Waveform)
+            Intent("com.google.android.apps.search.assistant.action.GEMINI_LIVE").setPackage("com.google.android.googlequicksearchbox"),
+            
+            // Пріоритет 3: Живий чат
+            Intent("com.google.android.apps.search.assistant.action.LIVE_VOICE_CHAT").setPackage("com.google.android.googlequicksearchbox"),
+            
+            // Пріоритет 4: Режим прослуховування
+            Intent("com.google.android.googlequicksearchbox.action.ASSISTANT_LIVE_CONVERSATION").setPackage("com.google.android.googlequicksearchbox"),
+            
+            // Пріоритет 5: Стандартний голосовий пошук
+            Intent("com.google.android.googlequicksearchbox.action.GSA_VOICE_SEARCH").setPackage("com.google.android.googlequicksearchbox")
+        )
+
+        for (intent in intents) {
+            try {
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                startActivity(intent)
+                return
+            } catch (_: Exception) {}
+        }
+        
+        // Fallback до стандартної команди
         try {
-            startActivity(Intent(Intent.ACTION_VOICE_COMMAND).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK })
+            startActivity(Intent(Intent.ACTION_VOICE_COMMAND).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: Exception) {}
     }
 
@@ -243,27 +302,6 @@ class ClockActivity : ComponentActivity() {
             val expandMethod = statusBarManager.getMethod("expandNotificationsPanel")
             expandMethod.invoke(statusBarService)
         } catch (_: Exception) {}
-    }
-
-    private fun toggleHotspot() {
-        val intents = listOf(
-            // Пріоритет: Режим модема (Tethering)
-            Intent("android.settings.TETHER_CONFIG_SETTINGS"),
-            // Налаштування Wi-Fi Hotspot
-            Intent().setComponent(ComponentName("com.android.settings", "com.android.settings.Settings\$WifiApSettingsActivity")),
-            // Загальні бездротові мережі
-            Intent(Settings.ACTION_WIRELESS_SETTINGS),
-            // Загальні налаштування
-            Intent(Settings.ACTION_SETTINGS)
-        )
-
-        for (intent in intents) {
-            try {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(intent)
-                return
-            } catch (_: Exception) {}
-        }
     }
 
     @SuppressLint("MissingPermission")
