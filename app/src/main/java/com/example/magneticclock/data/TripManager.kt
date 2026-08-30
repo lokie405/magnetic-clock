@@ -26,6 +26,8 @@ object TripManager {
     private var startLng: Double = 0.0
     private var endLat: Double = 0.0
     private var endLng: Double = 0.0
+    private var routePoints = mutableListOf<String>()
+    private var lastRoutePointTime: Long = 0
 
     // Simulation fields
     private var isSimulating = false
@@ -54,6 +56,14 @@ object TripManager {
             }
             endLat = location.latitude
             endLng = location.longitude
+
+            // Record route point every 30 seconds or 100 meters
+            val now = System.currentTimeMillis()
+            val lastPoint = lastLocation
+            if (now - lastRoutePointTime > 30000 || (lastPoint != null && location.distanceTo(lastPoint) > 100)) {
+                routePoints.add("${location.latitude},${location.longitude}")
+                lastRoutePointTime = now
+            }
         }
         lastLocation = location
     }
@@ -64,6 +74,9 @@ object TripManager {
         startLat = lat
         startLng = lng
         isTripActive = true
+        routePoints.clear()
+        routePoints.add("$lat,$lng")
+        lastRoutePointTime = tripStartTime
     }
 
     /**
@@ -95,8 +108,9 @@ object TripManager {
         val sLng = startLng
         val eLat = endLat
         val eLng = endLng
+        val finalRoute = routePoints.toList()
         
-        Log.i("TripManager", "Finalizing trip: $dist km")
+        Log.i("TripManager", "Finalizing trip: $dist km with ${finalRoute.size} points")
 
         val appContext = context.applicationContext
         scope.launch(Dispatchers.IO) {
@@ -116,7 +130,8 @@ object TripManager {
                     startAddress = startAddr,
                     startLatLng = "$sLat,$sLng",
                     endAddress = endAddr,
-                    endLatLng = "$eLat,$eLng"
+                    endLatLng = "$eLat,$eLng",
+                    route = finalRoute
                 )
 
                 JournalManager.saveTrip(appContext, entry)
@@ -135,6 +150,8 @@ object TripManager {
         isTripActive = false
         lastLocation = null
         currentSpeedKmH = 0f
+        routePoints.clear()
+        lastRoutePointTime = 0
     }
 
     fun toggleSpeedSimulation() {
@@ -163,6 +180,9 @@ object TripManager {
                 // Симулюємо рух у бік Квасилова для зміни адреси
                 endLat = 50.6199 - (tripDistance / 111.0) 
                 endLng = 26.2516 + (tripDistance / 70.0)
+                
+                // Додаємо точки маршруту в симуляції
+                routePoints.add("$endLat,$endLng")
             }
         }
         Log.d("TripManager", "Speed simulation started: 50 km/h (Rivne)")

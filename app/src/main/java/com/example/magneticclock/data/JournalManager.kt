@@ -20,7 +20,19 @@ object JournalManager {
         val trips = try {
             val json = file.readText()
             val type = object : TypeToken<List<TripEntry>>() {}.type
-            gson.fromJson<List<TripEntry>>(json, type) ?: emptyList()
+            val result = gson.fromJson<List<TripEntry>>(json, type) ?: emptyList()
+            // Gson might leave fields as null if they were missing in JSON
+            result.map { entry ->
+                entry.copy(
+                    id = entry.id ?: UUID.randomUUID().toString(),
+                    date = entry.date ?: "",
+                    startAddress = entry.startAddress ?: "",
+                    startLatLng = entry.startLatLng ?: "",
+                    endAddress = entry.endAddress ?: "",
+                    endLatLng = entry.endLatLng ?: "",
+                    route = (entry.route as List<String>?) ?: emptyList()
+                )
+            }
         } catch (e: Exception) {
             emptyList()
         }
@@ -220,7 +232,8 @@ object JournalManager {
                     startAddress = "Київ, вул. Центральна, ${random.nextInt(100) + 1}",
                     startLatLng = "50.4501,30.5234",
                     endAddress = "Київ, просп. Перемоги, ${random.nextInt(120) + 1}",
-                    endLatLng = "50.4580,30.4500"
+                    endLatLng = "50.4580,30.4500",
+                    route = listOf("50.4501,30.5234", "50.4520,30.5000", "50.4550,30.4800", "50.4580,30.4500")
                 ))
             }
             cal.add(Calendar.DAY_OF_YEAR, -1)

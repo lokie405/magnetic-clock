@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,6 +30,7 @@ fun TripListScreen(
     trips: List<TripEntry>,
     onDeleteTrip: (String) -> Unit,
     onAddressClick: (String) -> Unit,
+    onRouteClick: (List<String>) -> Unit,
     onBack: () -> Unit
 ) {
     val groupedTrips = remember(trips) {
@@ -61,7 +63,7 @@ fun TripListScreen(
             ) {
                 groupedTrips.forEach { (date, dayTrips) ->
                     item(key = date) {
-                        DateHeader(date = date, dayTrips = dayTrips, onDeleteTrip = onDeleteTrip, onAddressClick = onAddressClick)
+                        DateHeader(date = date, dayTrips = dayTrips, onDeleteTrip = onDeleteTrip, onAddressClick = onAddressClick, onRouteClick = onRouteClick)
                     }
                 }
             }
@@ -70,7 +72,7 @@ fun TripListScreen(
 }
 
 @Composable
-fun DateHeader(date: String, dayTrips: List<TripEntry>, onDeleteTrip: (String) -> Unit, onAddressClick: (String) -> Unit) {
+fun DateHeader(date: String, dayTrips: List<TripEntry>, onDeleteTrip: (String) -> Unit, onAddressClick: (String) -> Unit, onRouteClick: (List<String>) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     
     Card(
@@ -100,7 +102,7 @@ fun DateHeader(date: String, dayTrips: List<TripEntry>, onDeleteTrip: (String) -
             AnimatedVisibility(visible = expanded) {
                 Column(modifier = Modifier.padding(bottom = 8.dp)) {
                     dayTrips.sortedByDescending { it.startTime }.forEachIndexed { index, trip ->
-                        TripItem(index = dayTrips.size - index, trip = trip, onDeleteTrip = onDeleteTrip, onAddressClick = onAddressClick)
+                        TripItem(index = dayTrips.size - index, trip = trip, onDeleteTrip = onDeleteTrip, onAddressClick = onAddressClick, onRouteClick = onRouteClick)
                         if (index < dayTrips.size - 1) {
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = Color.Gray.copy(alpha = 0.2f))
                         }
@@ -113,7 +115,7 @@ fun DateHeader(date: String, dayTrips: List<TripEntry>, onDeleteTrip: (String) -
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TripItem(index: Int, trip: TripEntry, onDeleteTrip: (String) -> Unit, onAddressClick: (String) -> Unit) {
+fun TripItem(index: Int, trip: TripEntry, onDeleteTrip: (String) -> Unit, onAddressClick: (String) -> Unit, onRouteClick: (List<String>) -> Unit) {
     val duration = trip.endTime - trip.startTime
     val min = (duration / 60000)
     val sec = (duration % 60000) / 1000
@@ -146,12 +148,29 @@ fun TripItem(index: Int, trip: TripEntry, onDeleteTrip: (String) -> Unit, onAddr
             )
             .padding(16.dp)
     ) {
-        Text(
-            text = "$index поїздка ($durationStr / ${"%.2f".format(trip.distance)}км)",
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "$index поїздка ($durationStr / ${"%.2f".format(trip.distance)}км)",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f)
+            )
+            
+            if (!trip.route.isNullOrEmpty()) {
+                IconButton(onClick = { onRouteClick(trip.route) }) {
+                    Icon(
+                        imageVector = Icons.Default.Route,
+                        contentDescription = "Маршрут",
+                        tint = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(4.dp))
         AddressRow(label = "Початок", address = trip.startAddress, latLng = trip.startLatLng, onAddressClick = onAddressClick)
         AddressRow(label = "Кінець", address = trip.endAddress, latLng = trip.endLatLng, onAddressClick = onAddressClick)

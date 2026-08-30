@@ -11,5 +11,6 @@ data class TripEntry(
     val startAddress: String,
     val startLatLng: String, // "lat,lng"
     val endAddress: String,
-    val endLatLng: String
+    val endLatLng: String,
+    val route: List<String> = emptyList() // List of "lat,lng"
 )

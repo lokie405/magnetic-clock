@@ -18,7 +18,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.JournalManager
 import com.example.magneticclock.data.SettingsManager
@@ -40,6 +42,11 @@ class MainActivity : ComponentActivity() {
 
     private fun updateInteractionTime() {
         lastInteractionTime.longValue = System.currentTimeMillis()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateInteractionTime()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -129,10 +136,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            if (isFromClock.value) {
-                LaunchedEffect(lastInteractionTime.longValue) {
+            if (isFromClock.value && currentScreen.value != "journal") {
+                val lifecycleOwner = LocalLifecycleOwner.current
+                LaunchedEffect(lastInteractionTime.longValue, currentScreen.value) {
                     delay((settingsState.settingsReturnDelaySeconds * 1000).toLong())
-                    finish()
+                    if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                        finish()
+                    }
                 }
             }
 
@@ -171,6 +181,32 @@ class MainActivity : ComponentActivity() {
                                         // Fallback if Maps not installed
                                         val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=$latLng"))
                                         startActivity(webIntent)
+                                    }
+                                },
+                                onRouteClick = { route ->
+                                    try {
+                                        // Будуємо посилання для Google Maps з точками маршруту
+                                        // Оскільки посилання обмежене, беремо максимум 20 рівномірних точок
+                                        val step = if (route.size > 20) route.size / 20 else 1
+                                        val sampledRoute = route.filterIndexed { index, _ -> index % step == 0 }
+                                        
+                                        val origin = route.first()
+                                        val destination = route.last()
+                                        val waypoints = if (sampledRoute.size > 2) {
+                                            sampledRoute.subList(1, sampledRoute.size - 1).joinToString("|")
+                                        } else ""
+                                        
+                                        val uriString = if (waypoints.isNotEmpty()) {
+                                            "https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination&waypoints=$waypoints&travelmode=driving"
+                                        } else {
+                                            "https://www.google.com/maps/dir/?api=1&origin=$origin&destination=$destination&travelmode=driving"
+                                        }
+                                        
+                                        val mapIntent = Intent(Intent.ACTION_VIEW, Uri.parse(uriString))
+                                        mapIntent.setPackage("com.google.android.apps.maps")
+                                        startActivity(mapIntent)
+                                    } catch (e: Exception) {
+                                        // Fallback to browser
                                     }
                                 },
                                 onBack = { currentScreen.value = "settings"; updateInteractionTime() }
