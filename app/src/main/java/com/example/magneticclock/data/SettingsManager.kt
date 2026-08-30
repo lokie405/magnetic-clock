@@ -24,6 +24,8 @@ class SettingsManager(private val context: Context) {
         val SETTINGS_RETURN_DELAY = floatPreferencesKey("settings_return_delay")
         
         val CLOCK_SIZE = intPreferencesKey("clock_size")
+        val NOTIFICATION_ICON_SIZE = intPreferencesKey("notification_icon_size")
+        val CONTROL_BUTTON_SIZE = intPreferencesKey("control_button_size")
         val CLOCK_FONT = stringPreferencesKey("clock_font")
         val DATE_FONT = stringPreferencesKey("date_font")
         val BATTERY_FONT = stringPreferencesKey("battery_font")
@@ -38,6 +40,7 @@ class SettingsManager(private val context: Context) {
         val BRIGHTNESS = floatPreferencesKey("brightness")
         val IS_AUTO_BRIGHTNESS = booleanPreferencesKey("is_auto_brightness")
         val BLUETOOTH_TRIGGER_DEVICE_NAME = stringPreferencesKey("bluetooth_trigger_device_name")
+        val INCLUDE_HAVIT = booleanPreferencesKey("include_havit")
         
         val LAYOUT_INDEX = intPreferencesKey("layout_index")
         val IS_ONEPLUS_STYLE = booleanPreferencesKey("is_oneplus_style")
@@ -64,6 +67,8 @@ class SettingsManager(private val context: Context) {
             inCarDeactivationDelayMs = preferences[Keys.IN_CAR_DEACTIVATION_DELAY] ?: 2000L,
             settingsReturnDelaySeconds = preferences[Keys.SETTINGS_RETURN_DELAY] ?: 5.0f,
             clockSizeSp = preferences[Keys.CLOCK_SIZE] ?: 180,
+            notificationIconSizeSp = preferences[Keys.NOTIFICATION_ICON_SIZE] ?: 44,
+            controlButtonSizeSp = preferences[Keys.CONTROL_BUTTON_SIZE] ?: 24,
             clockFont = preferences[Keys.CLOCK_FONT] ?: "Default",
             dateFont = preferences[Keys.DATE_FONT] ?: "Default",
             batteryFont = preferences[Keys.BATTERY_FONT] ?: "Default",
@@ -76,6 +81,7 @@ class SettingsManager(private val context: Context) {
             brightness = preferences[Keys.BRIGHTNESS] ?: 0.5f,
             isAutoBrightness = preferences[Keys.IS_AUTO_BRIGHTNESS] ?: true,
             bluetoothTriggerDeviceName = preferences[Keys.BLUETOOTH_TRIGGER_DEVICE_NAME] ?: "Ford Focus 3",
+            includeHavit = preferences[Keys.INCLUDE_HAVIT] ?: true,
             layoutIndex = preferences[Keys.LAYOUT_INDEX] ?: 0,
             isOnePlusStyle = preferences[Keys.IS_ONEPLUS_STYLE] ?: false,
             showTripTime = preferences[Keys.SHOW_TRIP_TIME] ?: true,
@@ -100,6 +106,8 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.IN_CAR_DEACTIVATION_DELAY] = settings.inCarDeactivationDelayMs
             preferences[Keys.SETTINGS_RETURN_DELAY] = settings.settingsReturnDelaySeconds
             preferences[Keys.CLOCK_SIZE] = settings.clockSizeSp
+            preferences[Keys.NOTIFICATION_ICON_SIZE] = settings.notificationIconSizeSp
+            preferences[Keys.CONTROL_BUTTON_SIZE] = settings.controlButtonSizeSp
             preferences[Keys.CLOCK_FONT] = settings.clockFont
             preferences[Keys.DATE_FONT] = settings.dateFont
             preferences[Keys.BATTERY_FONT] = settings.batteryFont
@@ -112,6 +120,7 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.BRIGHTNESS] = settings.brightness
             preferences[Keys.IS_AUTO_BRIGHTNESS] = settings.isAutoBrightness
             preferences[Keys.BLUETOOTH_TRIGGER_DEVICE_NAME] = settings.bluetoothTriggerDeviceName
+            preferences[Keys.INCLUDE_HAVIT] = settings.includeHavit
             preferences[Keys.LAYOUT_INDEX] = settings.layoutIndex
             preferences[Keys.IS_ONEPLUS_STYLE] = settings.isOnePlusStyle
             preferences[Keys.SHOW_TRIP_TIME] = settings.showTripTime

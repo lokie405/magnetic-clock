@@ -145,25 +145,29 @@ object JournalManager {
         if (lat == 0.0 && lng == 0.0) return "Невідома локація"
         return try {
             val geocoder = Geocoder(context, Locale("uk", "UA"))
-            val addresses = @Suppress("DEPRECATION") geocoder.getFromLocation(lat, lng, 1)
+            val addresses = @Suppress("DEPRECATION") geocoder.getFromLocation(lat, lng, 5)
             if (!addresses.isNullOrEmpty()) {
                 val addr = addresses[0]
                 
-                val city = addr.locality ?: ""
+                // Збираємо найбільш точну адресу
+                val city = addr.locality ?: addr.subAdminArea ?: addr.adminArea ?: ""
                 val street = addr.thoroughfare ?: ""
-                val house = addr.subThoroughfare ?: addr.featureName ?: ""
-                
-                val formattedStreet = shortenStreetType(street)
+                val house = addr.subThoroughfare ?: ""
                 
                 val parts = mutableListOf<String>()
                 if (city.isNotEmpty()) parts.add(city)
-                if (formattedStreet.isNotEmpty()) parts.add(formattedStreet)
-                if (house.isNotEmpty() && house != street) parts.add(house)
+                if (street.isNotEmpty()) parts.add(shortenStreetType(street))
+                if (house.isNotEmpty()) parts.add(house)
                 
-                if (parts.isNotEmpty()) parts.joinToString(", ")
-                else addr.getAddressLine(0) ?: "$lat, $lng"
+                if (parts.isNotEmpty()) {
+                    parts.joinToString(", ")
+                } else {
+                    // Якщо специфічних полів немає, беремо повний рядок від Google
+                    addr.getAddressLine(0)?.split(",")?.take(3)?.joinToString(",") ?: "$lat, $lng"
+                }
             } else "$lat, $lng"
         } catch (e: Exception) {
+            android.util.Log.e("JournalManager", "Geocoder error: ${e.message}")
             "$lat, $lng"
         }
     }

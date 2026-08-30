@@ -278,9 +278,13 @@ class MagneticSensorService : Service(), SensorEventListener {
         // Список цілей для порівняння (теж без пробілів та в нижньому регістрі)
         val targetSettings = currentSettings.bluetoothTriggerDeviceName.lowercase().replace("\\s".toRegex(), "")
         
+        val isHavit = cleanName.contains("havit") || cleanName.contains("tw929")
+        
+        // Якщо Havit вимкнено в налаштуваннях - ігноруємо його
+        if (isHavit && !currentSettings.includeHavit) return false
+
         return cleanName.contains(targetSettings) || 
-               cleanName.contains("havit") || 
-               cleanName.contains("tw929") || 
+               isHavit || 
                cleanName.contains("fordfocus") ||
                cleanName.contains("ford")
     }
@@ -481,8 +485,19 @@ class MagneticSensorService : Service(), SensorEventListener {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // Оновлюємо єдине сповіщення під ID 1
-        manager.notify(1, createMonitoringNotification())
+        
+        if (isInCar) {
+            // Вмикаємо Foreground режим і показуємо сповіщення
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(1, createMonitoringNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(1, createMonitoringNotification())
+            }
+        } else {
+            // Вимикаємо сповіщення, коли не в авто
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            manager.cancel(1)
+        }
     }
 
     private fun createMonitoringNotification(): Notification {

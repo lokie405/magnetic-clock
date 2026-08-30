@@ -149,25 +149,23 @@ object TripManager {
         isSimulating = true
         currentSpeedKmH = 50f
         
-        // Ensure trip starts if it hasn't already (logic normally requires speed >= 2)
         if (tripStartTime == 0L) {
-            // Mock coordinates (e.g., center of Kyiv for testing)
-            startTrip(50.4501, 30.5234)
+            // Координати Рівного для тестів (центр)
+            startTrip(50.6199, 26.2516)
         }
 
         simulationJob?.cancel()
         simulationJob = scope.launch {
             while (isSimulating) {
                 delay(1000)
-                // 50 km/h = 13.88 meters per second
                 tripDistance += (13.88 / 1000.0)
                 
-                // Update end coordinates slightly to simulate movement for geocoder
-                endLat = 50.4501 + (tripDistance / 111.0) // Very rough approximation
-                endLng = 30.5234
+                // Симулюємо рух у бік Квасилова для зміни адреси
+                endLat = 50.6199 - (tripDistance / 111.0) 
+                endLng = 26.2516 + (tripDistance / 70.0)
             }
         }
-        Log.d("TripManager", "Speed simulation started: 50 km/h")
+        Log.d("TripManager", "Speed simulation started: 50 km/h (Rivne)")
     }
 
     private fun stopSpeedSimulation() {

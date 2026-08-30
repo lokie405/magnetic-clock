@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.JournalManager
 import com.example.magneticclock.data.SettingsManager
+import com.example.magneticclock.data.TripEntry
 import com.example.magneticclock.ui.SettingsScreen
 import com.example.magneticclock.ui.TripListScreen
 import kotlinx.coroutines.delay
@@ -93,8 +94,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             val scope = rememberCoroutineScope()
             val settingsState by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
-            val trips by produceState(initialValue = emptyList()) {
-                value = JournalManager.loadTrips(this@MainActivity)
+            
+            var trips by remember { mutableStateOf<List<TripEntry>>(emptyList()) }
+            
+            fun loadTrips() {
+                trips = JournalManager.loadTrips(this@MainActivity)
+            }
+            
+            LaunchedEffect(Unit) {
+                loadTrips()
             }
             
             val permissionLauncher = rememberLauncherForActivityResult(
@@ -147,7 +155,26 @@ class MainActivity : ComponentActivity() {
                     when (currentScreen.value) {
                         "journal" -> {
                             BackHandler { currentScreen.value = "settings"; updateInteractionTime() }
-                            TripListScreen(trips = trips, onBack = { currentScreen.value = "settings"; updateInteractionTime() })
+                            TripListScreen(
+                                trips = trips,
+                                onDeleteTrip = { id -> 
+                                    JournalManager.deleteTrip(this@MainActivity, id)
+                                    loadTrips()
+                                },
+                                onAddressClick = { latLng ->
+                                    try {
+                                        val gmmIntentUri = Uri.parse("geo:$latLng?q=$latLng")
+                                        val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
+                                        mapIntent.setPackage("com.google.android.apps.maps")
+                                        startActivity(mapIntent)
+                                    } catch (e: Exception) {
+                                        // Fallback if Maps not installed
+                                        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=$latLng"))
+                                        startActivity(webIntent)
+                                    }
+                                },
+                                onBack = { currentScreen.value = "settings"; updateInteractionTime() }
+                            )
                         }
                         else -> {
                             SettingsScreen(

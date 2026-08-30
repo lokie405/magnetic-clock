@@ -195,7 +195,7 @@ fun PhoneTempInfo(temp: Float) {
 @Composable
 fun ClassicLayout(settings: AppSettings, currentTime: Date, speed: Float, tripStartTime: Long, tripDistance: Double, isTripActive: Boolean, contentColor: Color, secondaryColor: Color, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        if (settings.showUnreadNotificationIcons) NotificationIconsRow()
+        if (settings.showUnreadNotificationIcons) NotificationIconsRow(settings)
         TimeRow(settings, currentTime, contentColor)
         DateText(secondaryColor, currentTime)
 
@@ -283,20 +283,20 @@ fun MinimalistLayout(settings: AppSettings, currentTime: Date, speed: Float, con
 fun ControlButtonsRow(settings: AppSettings, contentColor: Color, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = { onSettingsChanged(settings.copy(isAutoBrightness = !settings.isAutoBrightness)) }) {
-            Icon(Icons.Default.BrightnessAuto, contentDescription = null, tint = if (settings.isAutoBrightness) Color.Green else contentColor)
+            Icon(Icons.Default.BrightnessAuto, contentDescription = null, tint = if (settings.isAutoBrightness) Color.Green else contentColor, modifier = Modifier.size(settings.controlButtonSizeSp.dp))
         }
         Spacer(Modifier.width(24.dp))
         // Settings Gear Button
         IconButton(onClick = onSettingsClick) {
-            Icon(Icons.Default.Settings, contentDescription = "Налаштування", tint = contentColor)
+            Icon(Icons.Default.Settings, contentDescription = "Налаштування", tint = contentColor, modifier = Modifier.size(settings.controlButtonSizeSp.dp))
         }
         Spacer(Modifier.width(24.dp))
         // Mock Movement Button
         IconButton(onClick = onMockMove) { 
-            Icon(Icons.Default.DirectionsCar, contentDescription = "Mock Move", tint = if (com.example.magneticclock.data.TripManager.isTripActive && com.example.magneticclock.data.TripManager.currentSpeedKmH > 0) Color.Green else contentColor) 
+            Icon(Icons.Default.DirectionsCar, contentDescription = "Mock Move", tint = if (com.example.magneticclock.data.TripManager.isTripActive && com.example.magneticclock.data.TripManager.currentSpeedKmH > 0) Color.Green else contentColor, modifier = Modifier.size(settings.controlButtonSizeSp.dp)) 
         }
         Spacer(Modifier.width(24.dp))
-        IconButton(onClick = onPowerOff) { Icon(Icons.Default.PowerSettingsNew, contentDescription = null, tint = Color.Red) }
+        IconButton(onClick = onPowerOff) { Icon(Icons.Default.PowerSettingsNew, contentDescription = null, tint = Color.Red, modifier = Modifier.size(settings.controlButtonSizeSp.dp)) }
     }
 }
 
@@ -306,7 +306,7 @@ fun BrightnessSliderOnly(settings: AppSettings, contentColor: Color, onSettingsC
 }
 
 @Composable
-fun NotificationIconsRow() {
+fun NotificationIconsRow(settings: AppSettings) {
     val context = LocalContext.current
     val activeNotifications = NotificationService.notificationList
     
@@ -318,14 +318,14 @@ fun NotificationIconsRow() {
     if (filteredNotifications.isNotEmpty()) {
         LazyRow(modifier = Modifier.padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(filteredNotifications) { sbn ->
-                NotificationIcon(context, sbn)
+                NotificationIcon(context, sbn, settings.notificationIconSizeSp)
             }
         }
     }
 }
 
 @Composable
-fun NotificationIcon(context: android.content.Context, sbn: android.service.notification.StatusBarNotification) {
+fun NotificationIcon(context: android.content.Context, sbn: android.service.notification.StatusBarNotification, iconSize: Int) {
     val packageName = sbn.packageName
     val iconId = sbn.id
     
@@ -355,7 +355,7 @@ fun NotificationIcon(context: android.content.Context, sbn: android.service.noti
             bitmap = it, 
             contentDescription = null, 
             modifier = Modifier
-                .size(44.dp) // Великий розмір для зручності
+                .size(iconSize.dp) 
                 .clickable {
                     val packageName = sbn.packageName
                     val contentIntent = sbn.notification.contentIntent

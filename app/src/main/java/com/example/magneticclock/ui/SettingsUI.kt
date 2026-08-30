@@ -207,15 +207,33 @@ fun SettingsScreen(
                 ) { onSettingsChanged(settings.copy(settingsReturnDelaySeconds = it)) }
             }
 
-            // 8. Розмір шрифта
+            // 8. Розмір шрифта та значків
             item {
-                LinePicker(
-                    label = "Розмір годинника",
-                    value = settings.clockSizeSp.toFloat(),
-                    valueRange = 50f..400f,
-                    steps = 35,
-                    unit = "sp"
-                ) { onSettingsChanged(settings.copy(clockSizeSp = it.toInt())) }
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LinePicker(
+                        label = "Розмір годинника",
+                        value = settings.clockSizeSp.toFloat(),
+                        valueRange = 50f..400f,
+                        steps = 35,
+                        unit = "sp"
+                    ) { onSettingsChanged(settings.copy(clockSizeSp = it.toInt())) }
+
+                    LinePicker(
+                        label = "Розмір значків сповіщень",
+                        value = settings.notificationIconSizeSp.toFloat(),
+                        valueRange = 20f..100f,
+                        steps = 16,
+                        unit = "dp"
+                    ) { onSettingsChanged(settings.copy(notificationIconSizeSp = it.toInt())) }
+
+                    LinePicker(
+                        label = "Розмір кнопок керування",
+                        value = settings.controlButtonSizeSp.toFloat(),
+                        valueRange = 16f..64f,
+                        steps = 12,
+                        unit = "dp"
+                    ) { onSettingsChanged(settings.copy(controlButtonSizeSp = it.toInt())) }
+                }
             }
 
             // 9. Шрифти
@@ -250,6 +268,7 @@ fun SettingsScreen(
                     SettingSwitch("Швидкість", settings.showSpeed, Icons.Default.Speed) { onSettingsChanged(settings.copy(showSpeed = it)) }
                     SettingSwitch("Значення магнітного поля", settings.showMagneticField, Icons.Default.Sensors) { onSettingsChanged(settings.copy(showMagneticField = it)) }
                     SettingSwitch("Назва Bluetooth пристрою", settings.showConnectedDeviceName, Icons.Default.Bluetooth) { onSettingsChanged(settings.copy(showConnectedDeviceName = it)) }
+                    SettingSwitch("Включати Havit TW929 Pro", settings.includeHavit, Icons.Default.Headset) { onSettingsChanged(settings.copy(includeHavit = it)) }
                     SettingSwitch("Значки сповіщень", settings.showUnreadNotificationIcons, Icons.Default.Mail) { onSettingsChanged(settings.copy(showUnreadNotificationIcons = it)) }
                 }
             }

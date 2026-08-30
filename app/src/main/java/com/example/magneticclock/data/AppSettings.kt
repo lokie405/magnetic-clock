@@ -14,6 +14,8 @@ data class AppSettings(
     val settingsReturnDelaySeconds: Float = 5.0f,
     
     val clockSizeSp: Int = 180,
+    val notificationIconSizeSp: Int = 44,
+    val controlButtonSizeSp: Int = 24,
     val clockFont: String = "Default",
     val dateFont: String = "Default",
     val batteryFont: String = "Default",
@@ -28,6 +30,7 @@ data class AppSettings(
     val brightness: Float = 0.5f,
     val isAutoBrightness: Boolean = true,
     val bluetoothTriggerDeviceName: String = "Ford Focus 3",
+    val includeHavit: Boolean = true,
     
     val layoutIndex: Int = 0,
     val isOnePlusStyle: Boolean = false,
