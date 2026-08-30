@@ -12,6 +12,8 @@ import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,21 +46,32 @@ class ClockActivity : ComponentActivity() {
     private var batteryLevel = mutableIntStateOf(100)
     private var bluetoothConnected = mutableStateOf(false)
     private var connectedDeviceName = mutableStateOf("")
+    private var isPowerSaveMode = mutableStateOf(false)
     private var isPowerSaveShown = false
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
-                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                if ((level != -1) && (scale != -1)) {
-                    batteryLevel.intValue = ((level * 100) / scale.toFloat()).toInt()
-                    checkBatteryWarning(batteryLevel.intValue)
+            when (intent?.action) {
+                Intent.ACTION_BATTERY_CHANGED -> {
+                    val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                    val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                    if ((level != -1) && (scale != -1)) {
+                        batteryLevel.intValue = ((level * 100) / scale.toFloat()).toInt()
+                        checkBatteryWarning(batteryLevel.intValue)
+                    }
+                    val temp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
+                    phoneTemperature.floatValue = temp / 10f
                 }
-                val temp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
-                phoneTemperature.floatValue = temp / 10f
+                PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> {
+                    checkPowerSaveStatus()
+                }
             }
         }
+    }
+
+    private fun checkPowerSaveStatus() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        isPowerSaveMode.value = pm.isPowerSaveMode
     }
 
     private fun checkBatteryWarning(level: Int) {
@@ -152,7 +165,13 @@ class ClockActivity : ComponentActivity() {
 
         sendBroadcast(Intent("CLOCK_OPENED").apply { setPackage(packageName) })
         
-        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val batteryFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+        }
+        registerReceiver(batteryReceiver, batteryFilter)
+        
+        checkPowerSaveStatus()
         registerReceiver(bluetoothReceiver, IntentFilter().apply {
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
@@ -228,6 +247,7 @@ class ClockActivity : ComponentActivity() {
                 isTripActive = TripManager.isTripActive,
                 bluetoothConnected = bluetoothConnected.value,
                 connectedDeviceName = connectedDeviceName.value,
+                isPowerSaveMode = isPowerSaveMode.value,
                 onSettingsChanged = { newSettings -> scope.launch { settingsManager.updateSettings(newSettings) } },
                 onSettingsClick = {
                     val intent = Intent(this@ClockActivity, MainActivity::class.java).apply {
@@ -252,6 +272,16 @@ class ClockActivity : ComponentActivity() {
                         sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })
                         settingsManager.updateSettings(settingsState.copy(isMonitoringEnabled = false))
                         finish()
+                    }
+                },
+                onPowerSaveToggle = {
+                    try {
+                        val intent = Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        try {
+                            startActivity(Intent(Settings.ACTION_SETTINGS))
+                        } catch (_: Exception) {}
                     }
                 },
                 onClose = { 

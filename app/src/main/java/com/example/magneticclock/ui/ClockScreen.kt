@@ -50,6 +50,7 @@ fun ClockScreen(
     isTripActive: Boolean,
     bluetoothConnected: Boolean,
     connectedDeviceName: String,
+    isPowerSaveMode: Boolean,
     onSettingsChanged: (AppSettings) -> Unit,
     onSettingsClick: () -> Unit,
     onDoubleTap: () -> Unit,
@@ -58,6 +59,7 @@ fun ClockScreen(
     onMockMove: () -> Unit,
     onStartTrip: () -> Unit,
     onPowerOff: () -> Unit,
+    onPowerSaveToggle: () -> Unit,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -168,7 +170,7 @@ fun ClockScreen(
         // Bottom Start: Phone Temp
         if (phoneTemp > 0) {
             Box(modifier = Modifier.align(Alignment.BottomStart).padding(24.dp)) {
-                PhoneTempInfo(phoneTemp)
+                PhoneTempInfo(phoneTemp, isPowerSaveMode, onPowerSaveToggle)
             }
         }
 
@@ -183,12 +185,31 @@ fun ClockScreen(
 }
 
 @Composable
-fun PhoneTempInfo(temp: Float) {
-    val tempColor = if (temp < 40f) Color(0xFF00E676) else Color.Red
+fun PhoneTempInfo(temp: Float, isPowerSaveMode: Boolean, onPowerSaveToggle: () -> Unit) {
+    val isDangerous = temp >= 40f
+    val tempColor = if (isDangerous) Color.Red else Color(0xFF00E676)
+    
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Default.Thermostat, contentDescription = null, tint = tempColor, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(4.dp))
         Text("${temp.toInt()}°C", color = tempColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        
+        if (isDangerous) {
+            Spacer(Modifier.width(12.dp))
+            IconButton(
+                onClick = onPowerSaveToggle,
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(if (isPowerSaveMode) Color.Green else Color.Red, CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (isPowerSaveMode) Icons.Default.BatteryChargingFull else Icons.Default.BatterySaver,
+                    contentDescription = "Енергозбереження",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
     }
 }
 
