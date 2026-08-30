@@ -487,11 +487,16 @@ class MagneticSensorService : Service(), SensorEventListener {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
         if (isInCar) {
-            // Вмикаємо Foreground режим і показуємо сповіщення
+            val notification = createMonitoringNotification()
+            // Вмикаємо Foreground режим
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(1, createMonitoringNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
-                startForeground(1, createMonitoringNotification())
+                startForeground(1, notification)
+            }
+            // Якщо активовано магніт, дублюємо повідомлення як тригер (для надійності прокидання)
+            if (isMagnetActive) {
+                manager.notify(1, notification)
             }
         } else {
             // Вимикаємо сповіщення, коли не в авто
@@ -520,23 +525,32 @@ class MagneticSensorService : Service(), SensorEventListener {
             else -> "В авто. Очікування магніту..."
         }
 
-        // Встановлюємо МІНІМАЛЬНИЙ пріоритет, щоб сповіщення "ховалося" внизу шторки
-        return NotificationCompat.Builder(this, "magnetic_monitor")
+        // Канал та пріоритет залежать від того, чи потрібно зараз розбудити екран
+        val channelId = if (isMagnetActive) "clock_trigger" else "magnetic_monitor"
+        val priority = if (isMagnetActive) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_MIN
+
+        val builder = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Magnetic Clock")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN) // Самий низ шторки, без іконки в статус-барі
-            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setPriority(priority)
+            .setVisibility(if (isMagnetActive) NotificationCompat.VISIBILITY_PUBLIC else NotificationCompat.VISIBILITY_SECRET)
             .setContentIntent(pendingIntent)
-            .apply {
-                if (currentSettings.showShadeNotification && isInCar && !isClockModeTriggered) {
-                    val stopIntent = Intent(this@MagneticSensorService, MagneticSensorService::class.java).apply { action = "STOP_SERVICE" }
-                    val stopPendingIntent = PendingIntent.getService(this@MagneticSensorService, 3, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                    addAction(0, "Зупинити", stopPendingIntent)
-                }
-            }
-            .build()
+
+        // КРИТИЧНО: FullScreenIntent для запуску на заблокованому екрані
+        if (isMagnetActive) {
+            builder.setFullScreenIntent(pendingIntent, true)
+            builder.setCategory(NotificationCompat.CATEGORY_ALARM)
+        }
+
+        if (currentSettings.showShadeNotification && isInCar && !isClockModeTriggered) {
+            val stopIntent = Intent(this@MagneticSensorService, MagneticSensorService::class.java).apply { action = "STOP_SERVICE" }
+            val stopPendingIntent = PendingIntent.getService(this@MagneticSensorService, 3, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            builder.addAction(0, "Зупинити", stopPendingIntent)
+        }
+
+        return builder.build()
     }
 
     private fun createNotificationChannels() {
