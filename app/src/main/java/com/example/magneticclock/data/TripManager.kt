@@ -37,7 +37,21 @@ object TripManager {
      * Called by Service whenever location changes.
      */
     fun updateLocation(location: Location) {
-        val speed = location.speed * 3.6f
+        val rawSpeed = location.speed * 3.6f
+        
+        // Розраховуємо швидкість вручну, якщо GPS повертає 0 (часта проблема при низьких швидкостях)
+        val speed = if (location.hasSpeed() && rawSpeed > 0.5f) {
+            rawSpeed
+        } else {
+            lastLocation?.let { prev ->
+                val dist = location.distanceTo(prev)
+                val time = (location.time - prev.time) / 1000.0
+                if (time > 0.8 && dist > 0.5) { // Уникаємо шуму, перевіряючи мінімальний час та зсув
+                    (dist / time * 3.6).toFloat()
+                } else currentSpeedKmH
+            } ?: rawSpeed
+        }
+        
         currentSpeedKmH = speed
 
         // Requirement: driveCar starts when speed >= 2 km/h 
@@ -50,7 +64,8 @@ object TripManager {
         if (tripStartTime > 0L) {
             lastLocation?.let { prev ->
                 val distanceMeters = location.distanceTo(prev)
-                if (distanceMeters > 0) {
+                // Додаємо дистанцію лише при русі (враховуємо швидкість або мінімальний зсув)
+                if (distanceMeters > 0 && (speed > 1.0f || distanceMeters > 2.0)) {
                     tripDistance += (distanceMeters / 1000.0)
                 }
             }
