@@ -106,11 +106,16 @@ class MagneticSensorService : Service(), SensorEventListener {
                 @Suppress("DEPRECATION") intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
             }
             
-            val name = try {
+            var name = try {
                 if (ActivityCompat.checkSelfPermission(context!!, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
                     device?.name
                 } else null
             } catch (e: SecurityException) { null }
+
+            // Спроба отримати ім'я з екстри, якщо getName() повернув null (буває на заблокованому екрані)
+            if (name == null) {
+                name = intent?.getStringExtra(BluetoothDevice.EXTRA_NAME)
+            }
 
             when (action) {
                 BluetoothDevice.ACTION_ACL_CONNECTED -> {
@@ -191,10 +196,13 @@ class MagneticSensorService : Service(), SensorEventListener {
 
         createNotificationChannels()
         
+        val startNotification = createMonitoringNotification()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(1, createMonitoringNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(1, startNotification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, startNotification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
-            startForeground(1, createMonitoringNotification())
+            startForeground(1, startNotification)
         }
         
         checkBluetoothStatus()
@@ -283,10 +291,12 @@ class MagneticSensorService : Service(), SensorEventListener {
         // Якщо Havit вимкнено в налаштуваннях - ігноруємо його
         if (isHavit && !currentSettings.includeHavit) return false
 
-        return cleanName.contains(targetSettings) || 
+        return (targetSettings.isNotEmpty() && cleanName.contains(targetSettings)) || 
                isHavit || 
                cleanName.contains("fordfocus") ||
-               cleanName.contains("ford")
+               cleanName.contains("ford") ||
+               cleanName.contains("sync") ||
+               cleanName.contains("bt-link")
     }
 
     private fun updateInCarState(connected: Boolean) {
@@ -365,6 +375,9 @@ class MagneticSensorService : Service(), SensorEventListener {
         locationManager.removeUpdates(locationListener)
         TripManager.onBluetoothDisconnected(this)
         
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancel(1001)
+
         isMagnetActive = false
         isClockShowing = false
         magnetActivationStartTime = 0
@@ -476,6 +489,10 @@ class MagneticSensorService : Service(), SensorEventListener {
         isClockModeTriggered = true
         updateNotification()
         
+        // Додаткове сповіщення для гарантованого запуску на заблокованому екрані
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(1001, createMonitoringNotification())
+        
         try { startActivity(intent) } catch (e: Exception) {
             Log.e("MagneticClock", "StartActivity failed: ${e.message}")
         }
@@ -488,13 +505,22 @@ class MagneticSensorService : Service(), SensorEventListener {
         
         if (isInCar) {
             val notification = createMonitoringNotification()
-            // Вмикаємо Foreground режим
+            
+            var type = 0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1, notification, type)
             } else {
                 startForeground(1, notification)
             }
-            // Якщо активовано магніт, дублюємо повідомлення як тригер (для надійності прокидання)
+            
+            // Якщо активовано магніт, оновлюємо сповіщення з високою важливістю
             if (isMagnetActive) {
                 manager.notify(1, notification)
             }
