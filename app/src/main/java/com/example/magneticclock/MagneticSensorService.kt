@@ -283,67 +283,52 @@ class MagneticSensorService : Service(), SensorEventListener {
     private fun isTargetDevice(device: BluetoothDevice?): Boolean {
         if (device == null) return false
         
+        // 1. Спробуємо отримати ім'я напряму
         var name = try {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
                 device.name
             } else null
         } catch (e: SecurityException) { null }
 
+        // 2. Якщо ім'я null (що часто буває на заблокованому екрані), 
+        // шукаємо його в списку спарених пристроїв за адресою
         if (name == null) {
-            // Спроба отримати ім'я з кешу через BluetoothAdapter (буває на заблокованому екрані)
             try {
                 if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
                     val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-                    val bondedDevices = bluetoothManager.adapter.bondedDevices
-                    name = bondedDevices.find { it.address == device.address }?.name
+                    name = bluetoothManager.adapter.bondedDevices.find { it.address == device.address }?.name
                 }
             } catch (e: Exception) {}
         }
 
-        if (isTargetName(name)) return true
-
-        // Fallback: перевірка класу пристрою (Car Audio / Handsfree)
-        // Це спрацює на заблокованому екрані, навіть якщо ім'я не вдалося отримати
-        try {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                val bluetoothClass = device.bluetoothClass
-                if (bluetoothClass != null) {
-                    val deviceClass = bluetoothClass.deviceClass
-                    // 1032 = AUDIO_VIDEO_CAR_AUDIO
-                    // 1056 = AUDIO_VIDEO_HANDSFREE
-                    if (deviceClass == 1032 || deviceClass == 1056) {
-                        Log.i("MagneticClock", "Detected Car Device Class: $deviceClass for device: $name")
-                        return true
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("MagneticClock", "Error checking bluetooth class: ${e.message}")
-        }
-
-        return false
+        Log.d("MagneticClock", "Checking device: $name (address: ${device.address})")
+        return isTargetName(name)
     }
 
     private fun isTargetName(name: String?): Boolean {
         if (name == null) return false
         
-        // Нормалізація: все в нижній регістр та видалення всіх пробілів
-        val cleanName = name.lowercase().replace("\\s".toRegex(), "")
+        val cleanName = name.lowercase().trim()
         
-        // Список цілей для порівняння (теж без пробілів та в нижньому регістрі)
-        val targetSettings = currentSettings.bluetoothTriggerDeviceName.lowercase().replace("\\s".toRegex(), "")
+        // 1. Перевірка Ford Focus 3
+        if (cleanName.contains("ford") || cleanName.contains("focus") || cleanName.contains("sync")) {
+            Log.i("MagneticClock", "Target detected: Ford Focus 3 system ($name)")
+            return true
+        }
         
-        val isHavit = cleanName.contains("havit") || cleanName.contains("tw929")
-        
-        // Якщо Havit вимкнено в налаштуваннях - ігноруємо його
-        if (isHavit && !currentSettings.includeHavit) return false
+        // 2. Перевірка Hawit TW929 Pro
+        if (cleanName.contains("hawit") || cleanName.contains("tw929")) {
+            Log.i("MagneticClock", "Target detected: Hawit headphones ($name)")
+            return true
+        }
 
-        return (targetSettings.isNotEmpty() && cleanName.contains(targetSettings)) || 
-               isHavit || 
-               cleanName.contains("fordfocus") ||
-               cleanName.contains("ford") ||
-               cleanName.contains("sync") ||
-               cleanName.contains("bt-link")
+        // 3. Перевірка імені з налаштувань
+        val targetSettings = currentSettings.bluetoothTriggerDeviceName.lowercase().trim()
+        if (targetSettings.isNotEmpty() && cleanName.contains(targetSettings)) {
+            return true
+        }
+
+        return false
     }
 
     private fun updateInCarState(connected: Boolean) {
@@ -446,8 +431,8 @@ class MagneticSensorService : Service(), SensorEventListener {
     private fun registerSensor() {
         Log.d("MagneticClock", "registerSensor() called")
         magneticSensor?.let {
-            // Use DELAY_UI for better energy efficiency since it's just a clock
-            val registered = sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            // NORMAL delay is more stable for background/locked screen on many devices
+            val registered = sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
             Log.i("MagneticClock", "Magnetic sensor registration: $registered")
         } ?: Log.e("MagneticClock", "CRITICAL: Magnetic sensor not found on this device!")
     }
@@ -537,8 +522,14 @@ class MagneticSensorService : Service(), SensorEventListener {
         updateNotification()
         
         // Додаткове сповіщення для гарантованого запуску на заблокованому екрані
+        // Використовуємо скасування перед надсиланням для "свіжості"
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(1001, createMonitoringNotification())
+        manager.cancel(1001)
+        
+        serviceScope.launch {
+            delay(100L)
+            manager.notify(1001, createMonitoringNotification())
+        }
         
         try { startActivity(intent) } catch (e: Exception) {
             Log.e("MagneticClock", "StartActivity failed: ${e.message}")
@@ -630,7 +621,14 @@ class MagneticSensorService : Service(), SensorEventListener {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // Знижуємо важливість, щоб сповіщення було тихим і ховалося
             val monitorChannel = NotificationChannel("magnetic_monitor", "Magnetic Field Monitor", NotificationManager.IMPORTANCE_LOW)
-            val triggerChannel = NotificationChannel("clock_trigger", "Clock Trigger", NotificationManager.IMPORTANCE_HIGH)
+            
+            // Канал для тригера має бути високої важливості
+            val triggerChannel = NotificationChannel("clock_trigger", "Clock Trigger", NotificationManager.IMPORTANCE_HIGH).apply {
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 100, 50, 100)
+                setSound(null, null) // Тихий запуск, але з вібрацією для пробудження
+            }
+            
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(monitorChannel)
             manager.createNotificationChannel(triggerChannel)
