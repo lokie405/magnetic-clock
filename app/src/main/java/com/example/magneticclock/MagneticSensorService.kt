@@ -119,19 +119,24 @@ class MagneticSensorService : Service(), SensorEventListener {
 
             when (action) {
                 BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                    Log.i("MagneticClock", "ACL Connected: $name")
-                    if (isTargetDevice(name)) {
-                        updateInCarState(true)
-                    } else {
-                        checkBluetoothStatus()
+                    Log.i("MagneticClock", "ACL Connected: $name (address: ${device?.address})")
+                    // Даємо системі трохи часу на оновлення кешу імен
+                    serviceScope.launch {
+                        delay(1000L)
+                        if (isTargetDevice(device)) {
+                            updateInCarState(true)
+                        } else {
+                            checkBluetoothStatus()
+                        }
                     }
                 }
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
                     Log.i("MagneticClock", "ACL Disconnected: $name")
-                    // Якщо від'єднався наш пристрій АБО ми не знаємо хто це - робимо повну перевірку
-                    if (isTargetDevice(name) || name == null) {
-                        checkBluetoothStatus()
-                    }
+                    checkBluetoothStatus()
+                }
+                BluetoothDevice.ACTION_NAME_CHANGED -> {
+                    Log.i("MagneticClock", "Bluetooth Name Changed: $name")
+                    checkBluetoothStatus()
                 }
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     val state = intent?.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
@@ -185,6 +190,7 @@ class MagneticSensorService : Service(), SensorEventListener {
         val btFilter = IntentFilter().apply {
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            addAction(BluetoothDevice.ACTION_NAME_CHANGED)
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
         }
         
@@ -237,12 +243,7 @@ class MagneticSensorService : Service(), SensorEventListener {
                 try {
                     val devices = proxy?.connectedDevices
                     val hasTarget = devices?.any { device ->
-                        val devName = try {
-                            if (ActivityCompat.checkSelfPermission(this@MagneticSensorService, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                                device.name
-                            } else null
-                        } catch (e: SecurityException) { null }
-                        isTargetDevice(devName)
+                        isTargetDevice(device)
                     } ?: false
                     
                     if (profile == BluetoothProfile.A2DP) foundInA2DP = hasTarget
@@ -269,15 +270,61 @@ class MagneticSensorService : Service(), SensorEventListener {
         
         // Fallback: миттєва перевірка через менеджер (на випадок якщо Proxy затримається)
         try {
-            val a2dpDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.A2DP)
-            val hsDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.HEADSET)
-            if (a2dpDevices.any { isTargetDevice(it.name) } || hsDevices.any { isTargetDevice(it.name) }) {
-                updateInCarState(true)
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                val a2dpDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.A2DP)
+                val hsDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.HEADSET)
+                if (a2dpDevices.any { isTargetDevice(it) } || hsDevices.any { isTargetDevice(it) }) {
+                    updateInCarState(true)
+                }
             }
         } catch (e: Exception) {}
     }
 
-    private fun isTargetDevice(name: String?): Boolean {
+    private fun isTargetDevice(device: BluetoothDevice?): Boolean {
+        if (device == null) return false
+        
+        var name = try {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                device.name
+            } else null
+        } catch (e: SecurityException) { null }
+
+        if (name == null) {
+            // Спроба отримати ім'я з кешу через BluetoothAdapter (буває на заблокованому екрані)
+            try {
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                    val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+                    val bondedDevices = bluetoothManager.adapter.bondedDevices
+                    name = bondedDevices.find { it.address == device.address }?.name
+                }
+            } catch (e: Exception) {}
+        }
+
+        if (isTargetName(name)) return true
+
+        // Fallback: перевірка класу пристрою (Car Audio / Handsfree)
+        // Це спрацює на заблокованому екрані, навіть якщо ім'я не вдалося отримати
+        try {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                val bluetoothClass = device.bluetoothClass
+                if (bluetoothClass != null) {
+                    val deviceClass = bluetoothClass.deviceClass
+                    // 1032 = AUDIO_VIDEO_CAR_AUDIO
+                    // 1056 = AUDIO_VIDEO_HANDSFREE
+                    if (deviceClass == 1032 || deviceClass == 1056) {
+                        Log.i("MagneticClock", "Detected Car Device Class: $deviceClass for device: $name")
+                        return true
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MagneticClock", "Error checking bluetooth class: ${e.message}")
+        }
+
+        return false
+    }
+
+    private fun isTargetName(name: String?): Boolean {
         if (name == null) return false
         
         // Нормалізація: все в нижній регістр та видалення всіх пробілів
