@@ -53,6 +53,7 @@ class MagneticSensorService : Service(), SensorEventListener {
     private var magnetActivationStartTime: Long = 0
     private var magnetDeactivationStartTime: Long = 0
     private var btDeactivationJob: Job? = null
+    private var lastMagnitude = 0f
     
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -302,28 +303,57 @@ class MagneticSensorService : Service(), SensorEventListener {
         }
 
         Log.d("MagneticClock", "Checking device: $name (address: ${device.address})")
-        return isTargetName(name)
+        if (isTargetName(name)) return true
+
+        // 3. Fallback: перевірка класу пристрою (Car Audio / Handsfree)
+        // Це спрацює на заблокованому екрані, навіть якщо ім'я не вдалося отримати
+        try {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                val bluetoothClass = device.bluetoothClass
+                if (bluetoothClass != null) {
+                    val deviceClass = bluetoothClass.deviceClass
+                    // 1032 = AUDIO_VIDEO_CAR_AUDIO, 1056 = AUDIO_VIDEO_HANDSFREE
+                    if (deviceClass == 1032 || deviceClass == 1056 || bluetoothClass.majorDeviceClass == 1024) {
+                        Log.i("MagneticClock", "Detected Car/Audio Device by Class: $deviceClass")
+                        return true
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MagneticClock", "Error checking bluetooth class: ${e.message}")
+        }
+
+        return false
     }
 
     private fun isTargetName(name: String?): Boolean {
-        if (name == null) return false
+        if (name == null || name.isEmpty()) return false
         
-        val cleanName = name.lowercase().trim()
+        // Видаляємо всі пробіли та переводимо в нижній регістр для максимально нестрогого порівняння
+        val cleanName = name.lowercase().replace("\\s".toRegex(), "")
+        Log.d("MagneticClock", "isTargetName check (cleaned): $cleanName")
         
-        // 1. Перевірка Ford Focus 3
-        if (cleanName.contains("ford") || cleanName.contains("focus") || cleanName.contains("sync")) {
-            Log.i("MagneticClock", "Target detected: Ford Focus 3 system ($name)")
+        // 1. Перевірка Ford Focus 3 (та будь-яких варіацій Ford/Focus/Sync)
+        if (cleanName.contains("ford") || 
+            cleanName.contains("focus") || 
+            cleanName.contains("sync") || 
+            cleanName.contains("foc3") ||
+            cleanName.contains("focu")) {
+            Log.i("MagneticClock", "Target detected: Ford system ($name)")
             return true
         }
         
         // 2. Перевірка Hawit TW929 Pro
-        if (cleanName.contains("hawit") || cleanName.contains("tw929")) {
-            Log.i("MagneticClock", "Target detected: Hawit headphones ($name)")
+        if (cleanName.contains("hawit") || 
+            cleanName.contains("tw929") || 
+            cleanName.contains("tw9") ||
+            cleanName.contains("pro")) {
+            Log.i("MagneticClock", "Target detected: Hawit ($name)")
             return true
         }
 
-        // 3. Перевірка імені з налаштувань
-        val targetSettings = currentSettings.bluetoothTriggerDeviceName.lowercase().trim()
+        // 3. Перевірка імені з налаштувань (теж без пробілів)
+        val targetSettings = currentSettings.bluetoothTriggerDeviceName.lowercase().replace("\\s".toRegex(), "")
         if (targetSettings.isNotEmpty() && cleanName.contains(targetSettings)) {
             return true
         }
@@ -431,8 +461,8 @@ class MagneticSensorService : Service(), SensorEventListener {
     private fun registerSensor() {
         Log.d("MagneticClock", "registerSensor() called")
         magneticSensor?.let {
-            // NORMAL delay is more stable for background/locked screen on many devices
-            val registered = sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+            // Повертаємо DELAY_UI для миттєвої реакції
+            val registered = sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
             Log.i("MagneticClock", "Magnetic sensor registration: $registered")
         } ?: Log.e("MagneticClock", "CRITICAL: Magnetic sensor not found on this device!")
     }
@@ -457,7 +487,20 @@ class MagneticSensorService : Service(), SensorEventListener {
         val x = event.values[0]
         val y = event.values[1]
         val z = event.values[2]
-        val magnitude = sqrt((x * x) + (y * y) + (z * z))
+        val magnitude = sqrt((x.toDouble() * x + y.toDouble() * y + z.toDouble() * z)).toFloat()
+        
+        // Оновлюємо значення для відображення в сповіщенні
+        val oldMag = lastMagnitude
+        lastMagnitude = magnitude
+
+        // Логуємо раз на 2 секунди
+        if (System.currentTimeMillis() % 2000 < 200) {
+            Log.v("MagneticClock", "Sensor active: magnitude=$magnitude")
+            // Оновлюємо сповіщення, щоб бачити силу поля (але не занадто часто)
+            if (Math.abs(magnitude - oldMag) > 5) {
+                updateNotification()
+            }
+        }
 
         sendBroadcast(Intent("MAGNETIC_FIELD_UPDATE").apply {
             setPackage(packageName)
@@ -473,7 +516,9 @@ class MagneticSensorService : Service(), SensorEventListener {
                 magnetDeactivationStartTime = 0
                 if (magnetActivationStartTime == 0L) {
                     magnetActivationStartTime = System.currentTimeMillis()
+                    Log.d("MagneticClock", "Magnet trigger potential: threshold exceeded ($magnitude)")
                 } else if (System.currentTimeMillis() - magnetActivationStartTime >= currentSettings.triggerDelayActivationMs) {
+                    Log.i("MagneticClock", "!!! MAGNET ACTIVATED !!!")
                     isMagnetActive = true
                     isClockModeTriggered = true // Фіксуємо активацію
                     magnetActivationStartTime = 0
@@ -585,8 +630,8 @@ class MagneticSensorService : Service(), SensorEventListener {
             !currentSettings.isMonitoringEnabled -> "Програма вимкнена"
             btDeactivationJob != null -> "Bluetooth втрачено. Вимкнення через ${currentSettings.inCarDeactivationDelayMs / 1000}с..."
             !isInCar -> "Очікування Bluetooth (${currentSettings.bluetoothTriggerDeviceName})..."
-            isClockModeTriggered -> "Повернутись до годинника"
-            else -> "В авто. Очікування магніту..."
+            isClockModeTriggered -> "Повернутись до годинника (Поле: ${"%.0f".format(lastMagnitude)})"
+            else -> "В авто. Очікування магніту... (Поле: ${"%.0f".format(lastMagnitude)})"
         }
 
         // Канал та пріоритет залежать від того, чи потрібно зараз розбудити екран
@@ -597,7 +642,8 @@ class MagneticSensorService : Service(), SensorEventListener {
             .setContentTitle("Magnetic Clock")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setOngoing(true)
+            .setOngoing(false) // Робимо повідомлення свайпабельним за запитом
+            .setAutoCancel(false)
             .setPriority(priority)
             .setVisibility(if (isMagnetActive) NotificationCompat.VISIBILITY_PUBLIC else NotificationCompat.VISIBILITY_SECRET)
             .setContentIntent(pendingIntent)
