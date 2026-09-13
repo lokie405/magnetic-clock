@@ -172,23 +172,39 @@ fun TripItem(index: Int, trip: TripEntry, onDeleteTrip: (String) -> Unit, onAddr
             }
         }
         Spacer(Modifier.height(4.dp))
-        AddressRow(label = "Початок", address = trip.startAddress, latLng = trip.startLatLng, onAddressClick = onAddressClick)
-        AddressRow(label = "Кінець", address = trip.endAddress, latLng = trip.endLatLng, onAddressClick = onAddressClick)
+        
+        val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+        AddressRow(
+            label = "Початок", 
+            time = timeFormat.format(Date(trip.startTime)),
+            address = trip.startAddress, 
+            latLng = trip.startLatLng, 
+            onAddressClick = onAddressClick
+        )
+        AddressRow(
+            label = "Кінець", 
+            time = timeFormat.format(Date(trip.endTime)),
+            address = trip.endAddress, 
+            latLng = trip.endLatLng, 
+            onAddressClick = onAddressClick
+        )
     }
 }
 
 @Composable
-fun AddressRow(label: String, address: String, latLng: String, onAddressClick: (String) -> Unit) {
+fun AddressRow(label: String, time: String, address: String, latLng: String, onAddressClick: (String) -> Unit) {
     Column(
         modifier = Modifier
             .padding(start = 8.dp, top = 4.dp)
             .clickable { onAddressClick(latLng) }
     ) {
-        Text(
-            text = "$label: ",
-            style = MaterialTheme.typography.labelMedium,
-            color = Color.Gray
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "$label ($time): ",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.Gray
+            )
+        }
         Text(
             text = address,
             style = MaterialTheme.typography.bodySmall,

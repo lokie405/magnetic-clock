@@ -136,15 +136,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            if (isFromClock.value && currentScreen.value != "journal") {
-                val lifecycleOwner = LocalLifecycleOwner.current
-                LaunchedEffect(lastInteractionTime.longValue, currentScreen.value) {
-                    delay((settingsState.settingsReturnDelaySeconds * 1000).toLong())
-                    if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                        finish()
-                    }
-                }
-            }
+            // Прибрано автоповернення по таймеру за запитом користувача
 
             MaterialTheme(
                 colorScheme = if (settingsState.isDarkMode) darkColorScheme() else lightColorScheme(),
@@ -185,8 +177,6 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onRouteClick = { route ->
                                     try {
-                                        // Будуємо посилання для Google Maps з точками маршруту
-                                        // Оскільки посилання обмежене, беремо максимум 20 рівномірних точок
                                         val step = if (route.size > 20) route.size / 20 else 1
                                         val sampledRoute = route.filterIndexed { index, _ -> index % step == 0 }
                                         
@@ -212,6 +202,12 @@ class MainActivity : ComponentActivity() {
                                 onBack = { currentScreen.value = "settings"; updateInteractionTime() }
                             )
                         }
+                        "logs" -> {
+                            BackHandler { currentScreen.value = "settings"; updateInteractionTime() }
+                            com.example.magneticclock.ui.LogListScreen(
+                                onBack = { currentScreen.value = "settings"; updateInteractionTime() }
+                            )
+                        }
                         else -> {
                             SettingsScreen(
                                 settings = settingsState,
@@ -231,6 +227,11 @@ class MainActivity : ComponentActivity() {
                                     updateInteractionTime()
                                     currentScreen.value = "journal"
                                 },
+                                onViewLogs = {
+                                    updateInteractionTime()
+                                    currentScreen.value = "logs"
+                                },
+                                onBackToClock = if (isFromClock.value) { { finish() } } else null,
                                 onOpenOverlaySettings = {
                                     val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
                                     startActivity(intent)

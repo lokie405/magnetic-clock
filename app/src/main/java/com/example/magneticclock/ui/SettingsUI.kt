@@ -39,6 +39,8 @@ fun SettingsScreen(
     onSettingsChanged: (AppSettings) -> Unit,
     onPreviewClick: () -> Unit,
     onViewJournal: () -> Unit,
+    onViewLogs: () -> Unit,
+    onBackToClock: (() -> Unit)? = null,
     onOpenOverlaySettings: () -> Unit,
     onOpenBatterySettings: () -> Unit,
 ) {
@@ -84,6 +86,13 @@ fun SettingsScreen(
                         Spacer(Modifier.width(16.dp))
                     }
                 },
+                navigationIcon = {
+                    if (onBackToClock != null) {
+                        IconButton(onClick = onBackToClock) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Назад до годинника")
+                        }
+                    }
+                },
                 actions = {
                     IconButton(onClick = onPreviewClick) {
                         Icon(Icons.Default.PlayArrow, contentDescription = "Preview")
@@ -100,14 +109,28 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
-                Button(
-                    onClick = onViewJournal,
+                Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Default.History, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Журнал поїздок")
+                    Button(
+                        onClick = onViewJournal,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                    ) {
+                        Icon(Icons.Default.History, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Поїздки")
+                    }
+                    Button(
+                        onClick = onViewLogs,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer)
+                    ) {
+                        Icon(Icons.Default.BugReport, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Логи")
+                    }
                 }
             }
 
@@ -196,17 +219,6 @@ fun SettingsScreen(
                 ) { onSettingsChanged(settings.copy(inCarDeactivationDelayMs = (it * 1000).toLong())) }
             }
 
-            // 7. Затримка повернення до годинника
-            item {
-                LinePicker(
-                    label = "Автоповернення до годинника",
-                    value = settings.settingsReturnDelaySeconds,
-                    valueRange = 1f..30f,
-                    steps = 59,
-                    unit = "с"
-                ) { onSettingsChanged(settings.copy(settingsReturnDelaySeconds = it)) }
-            }
-
             // 8. Розмір шрифта та значків
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -268,6 +280,8 @@ fun SettingsScreen(
                     SettingSwitch("Швидкість", settings.showSpeed, Icons.Default.Speed) { onSettingsChanged(settings.copy(showSpeed = it)) }
                     SettingSwitch("Значення магнітного поля", settings.showMagneticField, Icons.Default.Sensors) { onSettingsChanged(settings.copy(showMagneticField = it)) }
                     SettingSwitch("Назва Bluetooth пристрою", settings.showConnectedDeviceName, Icons.Default.Bluetooth) { onSettingsChanged(settings.copy(showConnectedDeviceName = it)) }
+                    SettingSwitch("Включати Ford Focus 3 (MAC)", settings.includeFordFocus, Icons.Default.DirectionsCar) { onSettingsChanged(settings.copy(includeFordFocus = it)) }
+                    SettingSwitch("Включати SYNC (MAC)", settings.includeSync, Icons.Default.DirectionsCar) { onSettingsChanged(settings.copy(includeSync = it)) }
                     SettingSwitch("Включати Havit TW929 Pro", settings.includeHavit, Icons.Default.Headset) { onSettingsChanged(settings.copy(includeHavit = it)) }
                     SettingSwitch("Значки сповіщень", settings.showUnreadNotificationIcons, Icons.Default.Mail) { onSettingsChanged(settings.copy(showUnreadNotificationIcons = it)) }
                 }

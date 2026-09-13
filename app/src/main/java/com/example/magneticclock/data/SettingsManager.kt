@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
@@ -41,6 +42,8 @@ class SettingsManager(private val context: Context) {
         val IS_AUTO_BRIGHTNESS = booleanPreferencesKey("is_auto_brightness")
         val BLUETOOTH_TRIGGER_DEVICE_NAME = stringPreferencesKey("bluetooth_trigger_device_name")
         val INCLUDE_HAVIT = booleanPreferencesKey("include_havit")
+        val INCLUDE_FORD_FOCUS = booleanPreferencesKey("include_ford_focus")
+        val INCLUDE_SYNC = booleanPreferencesKey("include_sync")
         
         val LAYOUT_INDEX = intPreferencesKey("layout_index")
         val IS_ONEPLUS_STYLE = booleanPreferencesKey("is_oneplus_style")
@@ -80,8 +83,10 @@ class SettingsManager(private val context: Context) {
             showUnreadNotificationIcons = preferences[Keys.SHOW_UNREAD_NOTIFICATION_ICONS] ?: false,
             brightness = preferences[Keys.BRIGHTNESS] ?: 0.5f,
             isAutoBrightness = preferences[Keys.IS_AUTO_BRIGHTNESS] ?: true,
-            bluetoothTriggerDeviceName = preferences[Keys.BLUETOOTH_TRIGGER_DEVICE_NAME] ?: "Ford Focus 3",
+            bluetoothTriggerDeviceName = preferences[Keys.BLUETOOTH_TRIGGER_DEVICE_NAME] ?: "",
             includeHavit = preferences[Keys.INCLUDE_HAVIT] ?: true,
+            includeFordFocus = preferences[Keys.INCLUDE_FORD_FOCUS] ?: true,
+            includeSync = preferences[Keys.INCLUDE_SYNC] ?: true,
             layoutIndex = preferences[Keys.LAYOUT_INDEX] ?: 0,
             isOnePlusStyle = preferences[Keys.IS_ONEPLUS_STYLE] ?: false,
             showTripTime = preferences[Keys.SHOW_TRIP_TIME] ?: true,
@@ -92,6 +97,10 @@ class SettingsManager(private val context: Context) {
             activationVibrationIntensity = preferences[Keys.ACTIVATION_VIBRATION] ?: 0,
             deactivationVibrationIntensity = preferences[Keys.DEACTIVATION_VIBRATION] ?: 0
         )
+    }
+
+    suspend fun getSettingsOnce(): AppSettings {
+        return settingsFlow.first()
     }
 
     suspend fun updateSettings(settings: AppSettings) {
@@ -121,6 +130,8 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.IS_AUTO_BRIGHTNESS] = settings.isAutoBrightness
             preferences[Keys.BLUETOOTH_TRIGGER_DEVICE_NAME] = settings.bluetoothTriggerDeviceName
             preferences[Keys.INCLUDE_HAVIT] = settings.includeHavit
+            preferences[Keys.INCLUDE_FORD_FOCUS] = settings.includeFordFocus
+            preferences[Keys.INCLUDE_SYNC] = settings.includeSync
             preferences[Keys.LAYOUT_INDEX] = settings.layoutIndex
             preferences[Keys.IS_ONEPLUS_STYLE] = settings.isOnePlusStyle
             preferences[Keys.SHOW_TRIP_TIME] = settings.showTripTime

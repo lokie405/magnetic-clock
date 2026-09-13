@@ -11,10 +11,20 @@ class NotificationService : NotificationListenerService() {
 
     companion object {
         val notificationList = mutableStateListOf<StatusBarNotification>()
+        private var instance: NotificationService? = null
+
+        fun dismissNotification(key: String) {
+            instance?.cancelNotification(key)
+        }
     }
 
     override fun onListenerConnected() {
+        instance = this
         refreshNotifications()
+    }
+
+    override fun onListenerDisconnected() {
+        instance = null
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {

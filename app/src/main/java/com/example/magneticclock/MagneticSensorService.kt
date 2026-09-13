@@ -44,6 +44,7 @@ class MagneticSensorService : Service(), SensorEventListener {
     
     // States
     private var isInCar = false // "In Car" mode (stays true during deactivation delay)
+    private var isSensorRegistered = false
     private var isBTDevicePhysicallyConnected = false // Physical BT connection status (instant)
     private var isMagnetActive = false
     private var isClockShowing = false
@@ -54,8 +55,11 @@ class MagneticSensorService : Service(), SensorEventListener {
     private var magnetDeactivationStartTime: Long = 0
     private var btDeactivationJob: Job? = null
     private var lastMagnitude = 0f
+    private var lastNotifiedMagnitude = 0f
+    private var isCheckingBluetooth = false
     
     private var wakeLock: PowerManager.WakeLock? = null
+    private var intentDevice: BluetoothDevice? = null
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
@@ -66,12 +70,48 @@ class MagneticSensorService : Service(), SensorEventListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "STOP_SERVICE") {
+        if (intent == null) {
+            com.example.magneticclock.data.AppLogger.d("Сервіс перезапущено системою без інтенту. Зупиняємося.")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        val action = intent.action
+        com.example.magneticclock.data.AppLogger.i("onStartCommand: action=$action")
+        if (action == "STOP_SERVICE") {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
-        return START_STICKY
+        
+        val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra("target_device", BluetoothDevice::class.java)
+        } else {
+            @Suppress("DEPRECATION") intent.getParcelableExtra("target_device")
+        }
+
+        if (device != null) {
+            com.example.magneticclock.data.AppLogger.d("onStartCommand: Отримано пристрій ${device.address} з інтенту")
+            intentDevice = device
+        }
+
+        if (device != null && isTargetDevice(device)) {
+            com.example.magneticclock.data.AppLogger.i("Пристрій з інтенту відповідає цільовому. Активуємо режим Авто.")
+            updateInCarState(true)
+        } else if (!isInCar && !isCheckingBluetooth) {
+            // Якщо інтент порожній (наприклад, ручний запуск або бут), робимо коротку перевірку
+            com.example.magneticclock.data.AppLogger.d("Запускаємо перевірку підключених Bluetooth пристроїв...")
+            checkBluetoothStatus()
+        }
+
+        return START_NOT_STICKY
+    }
+
+    private fun notifyInCarStatus() {
+        sendBroadcast(Intent("IN_CAR_STATUS_UPDATE").apply {
+            setPackage(packageName)
+            putExtra("is_in_car", isInCar)
+        })
     }
 
     private val controlReceiver = object : BroadcastReceiver() {
@@ -87,10 +127,7 @@ class MagneticSensorService : Service(), SensorEventListener {
                     updateNotification()
                 }
                 "REQUEST_IN_CAR_STATUS" -> {
-                    sendBroadcast(Intent("IN_CAR_STATUS_UPDATE").apply {
-                        setPackage(packageName)
-                        putExtra("is_in_car", isInCar)
-                    })
+                    notifyInCarStatus()
                 }
             }
         }
@@ -99,32 +136,42 @@ class MagneticSensorService : Service(), SensorEventListener {
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action
-            Log.d("MagneticClock", "Bluetooth Broadcast received: $action")
-            
             val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
             } else {
                 @Suppress("DEPRECATION") intent?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
             }
             
-            var name = try {
-                if (ActivityCompat.checkSelfPermission(context!!, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                    device?.name
-                } else null
-            } catch (e: SecurityException) { null }
-
-            // Спроба отримати ім'я з екстри, якщо getName() повернув null (буває на заблокованому екрані)
-            if (name == null) {
-                name = intent?.getStringExtra(BluetoothDevice.EXTRA_NAME)
+            var name = intent?.getStringExtra(BluetoothDevice.EXTRA_NAME)
+            if (name == null && device != null) {
+                try {
+                    if (ActivityCompat.checkSelfPermission(context!!, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                        name = device.name
+                    }
+                } catch (e: Exception) { }
             }
+
+            if (device != null && !com.example.magneticclock.data.DeviceFilter.isTargetDevice(this@MagneticSensorService, device, currentSettings)) {
+                // Якщо це сторонній пристрій, повністю ігноруємо його і не засмічуємо журнал
+                return
+            }
+
+            val stateStr = when(action) {
+                BluetoothDevice.ACTION_ACL_CONNECTED -> "СТАН: Підключився (CONNECTED)"
+                BluetoothDevice.ACTION_ACL_DISCONNECTED -> "СТАН: Від'єднався (DISCONNECTED)"
+                BluetoothDevice.ACTION_NAME_CHANGED -> "СТАН: Зміна імені"
+                BluetoothAdapter.ACTION_STATE_CHANGED -> "СТАН: Зміна адаптера BT"
+                else -> "СТАН: Активність"
+            }
+            
+            com.example.magneticclock.data.AppLogger.w("BT_DEV: Назва: [${name ?: "Невідомо"}], MAC: [${device?.address ?: "Немає"}], $stateStr")
 
             when (action) {
                 BluetoothDevice.ACTION_ACL_CONNECTED -> {
-                    Log.i("MagneticClock", "ACL Connected: $name (address: ${device?.address})")
-                    // Даємо системі трохи часу на оновлення кешу імен
                     serviceScope.launch {
                         delay(1000L)
                         if (isTargetDevice(device)) {
+                            com.example.magneticclock.data.AppLogger.i("ACL Connected підтверджено для цільового пристрою")
                             updateInCarState(true)
                         } else {
                             checkBluetoothStatus()
@@ -132,16 +179,21 @@ class MagneticSensorService : Service(), SensorEventListener {
                     }
                 }
                 BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                    Log.i("MagneticClock", "ACL Disconnected: $name")
-                    checkBluetoothStatus()
+                    com.example.magneticclock.data.AppLogger.w("ACL Disconnected: Зв'язок розірвано. Перевірка статусу...")
+                    // Якщо від'єднався наш цільовий пристрій - негайно вимикаємо "В авто"
+                    if (device != null && com.example.magneticclock.data.DeviceFilter.isTargetDevice(this@MagneticSensorService, device, currentSettings)) {
+                        updateInCarState(false)
+                    } else {
+                        checkBluetoothStatus()
+                    }
                 }
                 BluetoothDevice.ACTION_NAME_CHANGED -> {
-                    Log.i("MagneticClock", "Bluetooth Name Changed: $name")
                     checkBluetoothStatus()
                 }
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     val state = intent?.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
                     if (state == BluetoothAdapter.STATE_OFF || state == BluetoothAdapter.STATE_TURNING_OFF) {
+                        com.example.magneticclock.data.AppLogger.w("Bluetooth вимкнено в системі")
                         updateInCarState(false)
                     }
                 }
@@ -151,7 +203,7 @@ class MagneticSensorService : Service(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("MagneticClock", "Service onCreate()")
+        com.example.magneticclock.data.AppLogger.i("Сервіс MagneticSensorService СТВОРЕНО (onCreate)")
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
         locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
         magneticSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED) 
@@ -171,6 +223,13 @@ class MagneticSensorService : Service(), SensorEventListener {
                 val oldTarget = currentSettings.bluetoothTriggerDeviceName
                 currentSettings = newSettings
                 
+                intentDevice?.let { device ->
+                    if (newSettings.isMonitoringEnabled && com.example.magneticclock.data.DeviceFilter.isTargetDevice(this@MagneticSensorService, device, currentSettings)) {
+                        com.example.magneticclock.data.AppLogger.i("Пристрій з інтенту підтверджено після завантаження налаштувань")
+                        updateInCarState(true)
+                    }
+                }
+                
                 if (newSettings.isMonitoringEnabled != wasEnabled || oldTarget != newSettings.bluetoothTriggerDeviceName) {
                     if (newSettings.isMonitoringEnabled) {
                         checkBluetoothStatus()
@@ -185,6 +244,7 @@ class MagneticSensorService : Service(), SensorEventListener {
         ContextCompat.registerReceiver(this, controlReceiver, IntentFilter().apply {
             addAction("CLOCK_CLOSED_MANUALLY")
             addAction("CLOCK_OPENED")
+            addAction("REQUEST_IN_CAR_STATUS")
         }, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         // Android 14+ requires flags for system broadcasts too
@@ -203,19 +263,21 @@ class MagneticSensorService : Service(), SensorEventListener {
 
         createNotificationChannels()
         
-        val startNotification = createMonitoringNotification()
+        // Початковий запуск сервісу в режимі "тиші"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(1, startNotification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, startNotification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            startForeground(1, createMonitoringNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
-            startForeground(1, startNotification)
+            startForeground(1, createMonitoringNotification())
         }
         
-        checkBluetoothStatus()
+        // Якщо ми не в авто, відразу ПОВНІСТЮ видаляємо сповіщення
+        if (!isInCar) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }
     }
 
     private fun updateSensorRegistration() {
+        Log.d("MagneticClock", "updateSensorRegistration: enabled=${currentSettings.isMonitoringEnabled}, isInCar=$isInCar")
         // Датчик орієнтується на режим isInCar, який має затримку при вимкненні
         if (currentSettings.isMonitoringEnabled && isInCar) {
             registerSensor()
@@ -225,180 +287,113 @@ class MagneticSensorService : Service(), SensorEventListener {
     }
 
     private fun checkBluetoothStatus() {
-        if (!currentSettings.isMonitoringEnabled) return
+        if (!currentSettings.isMonitoringEnabled || isCheckingBluetooth) return
 
-        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        val adapter = bluetoothManager.adapter
-        
-        if (adapter == null || !adapter.isEnabled) {
-            updateInCarState(false)
-            return
-        }
+        isCheckingBluetooth = true
+        // Прибрано updateNotification() тут, щоб не показувати шторку завчасно
 
-        var foundInA2DP = false
-        var foundInHeadset = false
-        var checksCompleted = 0
+        serviceScope.launch {
+            val startTime = System.currentTimeMillis()
+            var attempt = 0
+            
+            while (System.currentTimeMillis() - startTime < 30000) {
+                if (isInCar) {
+                    isCheckingBluetooth = false
+                    return@launch
+                }
 
-        val profileListener = object : BluetoothProfile.ServiceListener {
-            override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {
-                try {
-                    val devices = proxy?.connectedDevices
-                    val hasTarget = devices?.any { device ->
-                        isTargetDevice(device)
-                    } ?: false
-                    
-                    if (profile == BluetoothProfile.A2DP) foundInA2DP = hasTarget
-                    if (profile == BluetoothProfile.HEADSET) foundInHeadset = hasTarget
-                    
-                    Log.d("MagneticClock", "Profile $profile check: hasTarget=$hasTarget")
-                } catch (e: Exception) {
-                    Log.e("MagneticClock", "Error in profile $profile: ${e.message}")
-                } finally {
-                    checksCompleted++
-                    adapter.closeProfileProxy(profile, proxy)
-                    
-                    // Коли обидва профілі перевірено
-                    if (checksCompleted >= 2) {
-                        updateInCarState(foundInA2DP || foundInHeadset)
+                val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+                val adapter = bluetoothManager.adapter
+                
+                if (adapter != null && adapter.isEnabled) {
+                    try {
+                        if (ActivityCompat.checkSelfPermission(this@MagneticSensorService, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                            // Опитуємо лише реально ПІДКЛЮЧЕНІ в системі пристрої
+                            val a2dpDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.A2DP)
+                            val hsDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.HEADSET)
+                            
+                            val target = a2dpDevices.find { com.example.magneticclock.data.DeviceFilter.isTargetDevice(this@MagneticSensorService, it, currentSettings) } 
+                                ?: hsDevices.find { com.example.magneticclock.data.DeviceFilter.isTargetDevice(this@MagneticSensorService, it, currentSettings) }
+                            
+                            if (target != null) {
+                                Log.i("MagneticClock", "Target device found in system connected list: ${target.address}")
+                                updateInCarState(true)
+                                isCheckingBluetooth = false
+                                return@launch
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MagneticClock", "BT Check Error: ${e.message}")
                     }
                 }
+                
+                attempt++
+                Log.d("MagneticClock", "BT Check Attempt $attempt...")
+                delay(3000L)
             }
-            override fun onServiceDisconnected(profile: Int) {}
+            
+            isCheckingBluetooth = false
+            if (!isInCar) {
+                com.example.magneticclock.data.AppLogger.w("Цільовий BT пристрій не знайдено за 30с фонового сканування. Сервіс зупиняється.")
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
         }
-
-        adapter.getProfileProxy(this, profileListener, BluetoothProfile.A2DP)
-        adapter.getProfileProxy(this, profileListener, BluetoothProfile.HEADSET)
-        
-        // Fallback: миттєва перевірка через менеджер (на випадок якщо Proxy затримається)
-        try {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                val a2dpDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.A2DP)
-                val hsDevices = bluetoothManager.getConnectedDevices(BluetoothProfile.HEADSET)
-                if (a2dpDevices.any { isTargetDevice(it) } || hsDevices.any { isTargetDevice(it) }) {
-                    updateInCarState(true)
-                }
-            }
-        } catch (e: Exception) {}
     }
 
     private fun isTargetDevice(device: BluetoothDevice?): Boolean {
         if (device == null) return false
-        
-        // 1. Спробуємо отримати ім'я напряму
-        var name = try {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                device.name
-            } else null
-        } catch (e: SecurityException) { null }
-
-        // 2. Якщо ім'я null (що часто буває на заблокованому екрані), 
-        // шукаємо його в списку спарених пристроїв за адресою
-        if (name == null) {
-            try {
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                    val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-                    name = bluetoothManager.adapter.bondedDevices.find { it.address == device.address }?.name
-                }
-            } catch (e: Exception) {}
-        }
-
-        Log.d("MagneticClock", "Checking device: $name (address: ${device.address})")
-        if (isTargetName(name)) return true
-
-        // 3. Fallback: перевірка класу пристрою (Car Audio / Handsfree)
-        // Це спрацює на заблокованому екрані, навіть якщо ім'я не вдалося отримати
-        try {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                val bluetoothClass = device.bluetoothClass
-                if (bluetoothClass != null) {
-                    val deviceClass = bluetoothClass.deviceClass
-                    // 1032 = AUDIO_VIDEO_CAR_AUDIO, 1056 = AUDIO_VIDEO_HANDSFREE
-                    if (deviceClass == 1032 || deviceClass == 1056 || bluetoothClass.majorDeviceClass == 1024) {
-                        Log.i("MagneticClock", "Detected Car/Audio Device by Class: $deviceClass")
-                        return true
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("MagneticClock", "Error checking bluetooth class: ${e.message}")
-        }
-
-        return false
-    }
-
-    private fun isTargetName(name: String?): Boolean {
-        if (name == null || name.isEmpty()) return false
-        
-        // Видаляємо всі пробіли та переводимо в нижній регістр для максимально нестрогого порівняння
-        val cleanName = name.lowercase().replace("\\s".toRegex(), "")
-        Log.d("MagneticClock", "isTargetName check (cleaned): $cleanName")
-        
-        // 1. Перевірка Ford Focus 3 (та будь-яких варіацій Ford/Focus/Sync)
-        if (cleanName.contains("ford") || 
-            cleanName.contains("focus") || 
-            cleanName.contains("sync") || 
-            cleanName.contains("foc3") ||
-            cleanName.contains("focu")) {
-            Log.i("MagneticClock", "Target detected: Ford system ($name)")
-            return true
-        }
-        
-        // 2. Перевірка Hawit TW929 Pro
-        if (cleanName.contains("hawit") || 
-            cleanName.contains("tw929") || 
-            cleanName.contains("tw9") ||
-            cleanName.contains("pro")) {
-            Log.i("MagneticClock", "Target detected: Hawit ($name)")
-            return true
-        }
-
-        // 3. Перевірка імені з налаштувань (теж без пробілів)
-        val targetSettings = currentSettings.bluetoothTriggerDeviceName.lowercase().replace("\\s".toRegex(), "")
-        if (targetSettings.isNotEmpty() && cleanName.contains(targetSettings)) {
-            return true
-        }
-
-        return false
+        return com.example.magneticclock.data.DeviceFilter.isTargetDevice(this, device, currentSettings)
     }
 
     private fun updateInCarState(connected: Boolean) {
-        Log.d("MagneticClock", "updateInCarState: connected=$connected, current isInCar=$isInCar")
+        com.example.magneticclock.data.AppLogger.d("updateInCarState: Фізичне з'єднання=$connected, Поточний логічний режим=$isInCar")
         
         isBTDevicePhysicallyConnected = connected
         
-        sendBroadcast(Intent("IN_CAR_STATUS_UPDATE").apply {
-            setPackage(packageName)
-            putExtra("is_in_car", connected)
-        })
-
         if (connected) {
             btDeactivationJob?.cancel()
             btDeactivationJob = null
             
             if (!isInCar) {
                 isInCar = true
-                isClockModeTriggered = false // Скидаємо при новому підключенні
-                Log.i("MagneticClock", ">>> inCar mode: STARTED <<<")
+                isClockModeTriggered = false
+                com.example.magneticclock.data.AppLogger.i(">>> РЕЖИМ 'В АВТО' АКТИВОВАНО <<<")
+                
+                // КРИТИЧНО: Спочатку повідомляємо UI, потім вмикаємо датчики
+                notifyInCarStatus()
                 onInCarStarted()
             } else {
                 updateSensorRegistration()
             }
         } else {
-            // При розриві НЕ вимикаємо датчик миттєво, чекаємо таймер
             if (isInCar && btDeactivationJob == null) {
-                Log.d("MagneticClock", "inCar lost, starting delay: ${currentSettings.inCarDeactivationDelayMs}ms")
+                com.example.magneticclock.data.AppLogger.w("Зв'язок BT перервано, запуск таймеру затримки: ${currentSettings.inCarDeactivationDelayMs}мс")
                 btDeactivationJob = serviceScope.launch {
                     updateNotification()
                     delay(currentSettings.inCarDeactivationDelayMs.milliseconds)
                     if (isActive) {
                         isInCar = false
-                        Log.i("MagneticClock", ">>> inCar mode: ENDED <<<")
+                        com.example.magneticclock.data.AppLogger.w(">>> РЕЖИМ 'В АВТО' ВИМКНЕНО ЗА ЗАТРИМКОЮ <<<")
+                        
+                        // КРИТИЧНО: Повідомляємо UI про вимкнення
+                        notifyInCarStatus()
                         onInCarEnded()
                         btDeactivationJob = null
+                        
+                        delay(5000L)
+                        if (!isBTDevicePhysicallyConnected) {
+                            com.example.magneticclock.data.AppLogger.i("Повне фонове закриття сервісу.")
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                            stopSelf()
+                        }
                     }
                 }
             }
         }
+
+        // Надсилаємо ЛОГІЧНИЙ стан (isInCar), щоб іконка залишалася зеленою під час затримки
+        notifyInCarStatus()
         updateNotification()
     }
 
@@ -459,18 +454,24 @@ class MagneticSensorService : Service(), SensorEventListener {
     }
 
     private fun registerSensor() {
+        if (isSensorRegistered) return
+        
         Log.d("MagneticClock", "registerSensor() called")
         magneticSensor?.let {
-            // Повертаємо DELAY_UI для миттєвої реакції
             val registered = sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
-            Log.i("MagneticClock", "Magnetic sensor registration: $registered")
+            isSensorRegistered = registered
+            com.example.magneticclock.data.AppLogger.d("Магнітний сканер: РЕЄСТРАЦІЯ (статус=$registered)")
         } ?: Log.e("MagneticClock", "CRITICAL: Magnetic sensor not found on this device!")
     }
 
     private fun unregisterSensor() {
-        Log.i("MagneticClock", "!!! STOPPING SENSOR: unregisterListener called !!!")
+        if (!isSensorRegistered) return
+        
+        com.example.magneticclock.data.AppLogger.w("Магнітний сканер: ВИМКНЕННЯ")
         sensorManager.unregisterListener(this)
-        // Clear UI magnitude
+        isSensorRegistered = false
+        
+        // Обов'язково скидаємо значення в 0
         sendBroadcast(Intent("MAGNETIC_FIELD_UPDATE").apply {
             setPackage(packageName)
             putExtra("magnitude", 0f)
@@ -478,9 +479,9 @@ class MagneticSensorService : Service(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        // Датчик працює, поки активний режим isInCar (враховуючи затримку)
+        // Датчик працює ТІЛЬКИ поки активний режим isInCar (з урахуванням затримки)
         if (event == null || !isInCar || !currentSettings.isMonitoringEnabled) {
-            if (!isInCar || !currentSettings.isMonitoringEnabled) unregisterSensor() 
+            if (isSensorRegistered) unregisterSensor() 
             return
         }
         
@@ -489,17 +490,17 @@ class MagneticSensorService : Service(), SensorEventListener {
         val z = event.values[2]
         val magnitude = sqrt((x.toDouble() * x + y.toDouble() * y + z.toDouble() * z)).toFloat()
         
-        // Оновлюємо значення для відображення в сповіщенні
-        val oldMag = lastMagnitude
         lastMagnitude = magnitude
 
-        // Логуємо раз на 2 секунди
-        if (System.currentTimeMillis() % 2000 < 200) {
-            Log.v("MagneticClock", "Sensor active: magnitude=$magnitude")
-            // Оновлюємо сповіщення, щоб бачити силу поля (але не занадто часто)
-            if (Math.abs(magnitude - oldMag) > 5) {
-                updateNotification()
-            }
+        // Оновлюємо сповіщення, якщо сила поля змінилася більше ніж на 5 мкТл
+        if (Math.abs(magnitude - lastNotifiedMagnitude) > 5) {
+            lastNotifiedMagnitude = magnitude
+            updateNotification()
+        }
+
+        // Логуємо раз на 5 секунд для дебагу
+        if (System.currentTimeMillis() % 5000 < 200) {
+            Log.v("MagneticClock", "Sensor active: magnitude=$magnitude, threshold=${currentSettings.activationThreshold}")
         }
 
         sendBroadcast(Intent("MAGNETIC_FIELD_UPDATE").apply {
@@ -516,17 +517,18 @@ class MagneticSensorService : Service(), SensorEventListener {
                 magnetDeactivationStartTime = 0
                 if (magnetActivationStartTime == 0L) {
                     magnetActivationStartTime = System.currentTimeMillis()
-                    Log.d("MagneticClock", "Magnet trigger potential: threshold exceeded ($magnitude)")
+                    Log.d("MagneticClock", "Magnet threshold exceeded: $magnitude. Waiting for delay...")
                 } else if (System.currentTimeMillis() - magnetActivationStartTime >= currentSettings.triggerDelayActivationMs) {
-                    Log.i("MagneticClock", "!!! MAGNET ACTIVATED !!!")
+                    com.example.magneticclock.data.AppLogger.i("!!! МАГНІТ ВИЯВЛЕНО: Запуск годинника (Поле: $magnitude) !!!")
                     isMagnetActive = true
-                    isClockModeTriggered = true // Фіксуємо активацію
+                    isClockModeTriggered = true
                     magnetActivationStartTime = 0
                     vibrate(currentSettings.activationVibrationIntensity)
                     startClockActivity()
                     updateNotification()
                 }
             } else {
+                if (magnetActivationStartTime != 0L) Log.d("MagneticClock", "Magnet lost before trigger: $magnitude")
                 magnetActivationStartTime = 0
             }
         } else {
@@ -535,6 +537,7 @@ class MagneticSensorService : Service(), SensorEventListener {
                 if (magnetDeactivationStartTime == 0L) {
                     magnetDeactivationStartTime = System.currentTimeMillis()
                 } else if (System.currentTimeMillis() - magnetDeactivationStartTime >= currentSettings.triggerDelayDeactivationMs) {
+                    com.example.magneticclock.data.AppLogger.w("!!! МАГНІТ ЗНЯТО: Закриття годинника (Поле: $magnitude) !!!")
                     isMagnetActive = false
                     magnetDeactivationStartTime = 0
                     vibrate(currentSettings.deactivationVibrationIntensity)
@@ -551,33 +554,36 @@ class MagneticSensorService : Service(), SensorEventListener {
 
     private fun startClockActivity() {
         val intent = Intent(this, ClockActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
+                     Intent.FLAG_ACTIVITY_SINGLE_TOP or 
+                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                     Intent.FLAG_ACTIVITY_CLEAR_TOP)
             putExtra("show_on_lockscreen", true)
+            putExtra("from_service", true)
         }
 
-        // Пробуджуємо екран
+        // Пробуджуємо екран агресивно
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            val wakeLock = pm.newWakeLock(PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE, "MagneticClock:WakeLock")
-            wakeLock.acquire(5000)
-        } catch (e: Exception) {}
+            @Suppress("DEPRECATION")
+            val screenWakeLock = pm.newWakeLock(
+                PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+                "MagneticClock:EmergencyWakeup"
+            )
+            screenWakeLock.acquire(5000L)
+            // Не відпускаємо відразу, даємо час системі зорієнтуватися
+        } catch (e: Exception) {
+            Log.e("MagneticClock", "WakeLock error: ${e.message}")
+        }
 
-        // Оновлюємо ЄДИНЕ сповіщення, додаючи FullScreenIntent для пробудження
         isClockModeTriggered = true
         updateNotification()
         
-        // Додаткове сповіщення для гарантованого запуску на заблокованому екрані
-        // Використовуємо скасування перед надсиланням для "свіжості"
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.cancel(1001)
-        
-        serviceScope.launch {
-            delay(100L)
-            manager.notify(1001, createMonitoringNotification())
-        }
-        
-        try { startActivity(intent) } catch (e: Exception) {
-            Log.e("MagneticClock", "StartActivity failed: ${e.message}")
+        try { 
+            startActivity(intent) 
+            Log.i("MagneticClock", "startActivity executed")
+        } catch (e: Exception) {
+            Log.e("MagneticClock", "startActivity failed: ${e.message}")
         }
     }
 
@@ -586,36 +592,53 @@ class MagneticSensorService : Service(), SensorEventListener {
         
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         
-        if (isInCar) {
+        // Сповіщення активне (відображається в шторці) ТІЛЬКИ коли є з'єднання з потрібними пристроями (isInCar)
+        if (currentSettings.isMonitoringEnabled && isInCar) {
             val notification = createMonitoringNotification()
-            
-            var type = 0
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(1, notification, type)
-            } else {
-                startForeground(1, notification)
-            }
-            
-            // Якщо активовано магніт, оновлюємо сповіщення з високою важливістю
-            if (isMagnetActive) {
-                manager.notify(1, notification)
-            }
+            startForegroundSafely(notification)
         } else {
-            // Вимикаємо сповіщення, коли не в авто
+            // Прибираємо будь-які повідомлення в шторці ПОВНІСТЮ
             stopForeground(STOP_FOREGROUND_REMOVE)
             manager.cancel(1)
         }
     }
 
+    private fun startForegroundSafely(notification: Notification) {
+        var type = 0
+        val hasFineLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarseLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (hasFineLocation || hasCoarseLocation) {
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1, notification, type)
+            } else {
+                startForeground(1, notification)
+            }
+        } catch (e: SecurityException) {
+            Log.e("MagneticClock", "SecurityException starting foreground with type flags: ${e.message}")
+            // Fallback without location type
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(1, notification, 0)
+                }
+            } catch (ex: Exception) {
+                Log.e("MagneticClock", "Failed fallback startForeground: ${ex.message}")
+            }
+        }
+    }
+
     private fun createMonitoringNotification(): Notification {
-        // Тепер сповіщення завжди веде до годинника, згідно з вашим запитом
         val targetIntent = Intent(this, ClockActivity::class.java).apply { 
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP) 
         }
@@ -625,39 +648,24 @@ class MagneticSensorService : Service(), SensorEventListener {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Текст сповіщення
-        val text = when {
-            !currentSettings.isMonitoringEnabled -> "Програма вимкнена"
-            btDeactivationJob != null -> "Bluetooth втрачено. Вимкнення через ${currentSettings.inCarDeactivationDelayMs / 1000}с..."
-            !isInCar -> "Очікування Bluetooth (${currentSettings.bluetoothTriggerDeviceName})..."
-            isClockModeTriggered -> "Повернутись до годинника (Поле: ${"%.0f".format(lastMagnitude)})"
-            else -> "В авто. Очікування магніту... (Поле: ${"%.0f".format(lastMagnitude)})"
-        }
-
-        // Канал та пріоритет залежать від того, чи потрібно зараз розбудити екран
+        // Використовуємо тихий канал для звичайного стану і гучний тільки для активації магнітом
         val channelId = if (isMagnetActive) "clock_trigger" else "magnetic_monitor"
-        val priority = if (isMagnetActive) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_MIN
-
+        val priority = if (isMagnetActive) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_LOW
+        
         val builder = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Magnetic Clock")
-            .setContentText(text)
+            .setContentText("Повернутись до годинника")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setOngoing(false) // Робимо повідомлення свайпабельним за запитом
+            .setOngoing(true) // Робимо постійним, поки триває зв'язок з авто
             .setAutoCancel(false)
             .setPriority(priority)
-            .setVisibility(if (isMagnetActive) NotificationCompat.VISIBILITY_PUBLIC else NotificationCompat.VISIBILITY_SECRET)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pendingIntent)
 
-        // КРИТИЧНО: FullScreenIntent для запуску на заблокованому екрані
+        // Дозволяє пробивати заблокований екран при підключенні магніту
         if (isMagnetActive) {
             builder.setFullScreenIntent(pendingIntent, true)
             builder.setCategory(NotificationCompat.CATEGORY_ALARM)
-        }
-
-        if (currentSettings.showShadeNotification && isInCar && !isClockModeTriggered) {
-            val stopIntent = Intent(this@MagneticSensorService, MagneticSensorService::class.java).apply { action = "STOP_SERVICE" }
-            val stopPendingIntent = PendingIntent.getService(this@MagneticSensorService, 3, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            builder.addAction(0, "Зупинити", stopPendingIntent)
         }
 
         return builder.build()

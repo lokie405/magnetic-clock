@@ -29,8 +29,10 @@ data class AppSettings(
     
     val brightness: Float = 0.5f,
     val isAutoBrightness: Boolean = true,
-    val bluetoothTriggerDeviceName: String = "Ford Focus 3",
+    val bluetoothTriggerDeviceName: String = "",
     val includeHavit: Boolean = true,
+    val includeFordFocus: Boolean = true,
+    val includeSync: Boolean = true,
     
     val layoutIndex: Int = 0,
     val isOnePlusStyle: Boolean = false,

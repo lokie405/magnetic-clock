@@ -372,11 +372,33 @@ fun NotificationIcon(context: android.content.Context, sbn: android.service.noti
     }
     
     icon?.let {
+        var dragOffsetY by remember { mutableFloatStateOf(0f) }
+        
         androidx.compose.foundation.Image(
             bitmap = it, 
             contentDescription = null, 
             modifier = Modifier
-                .size(iconSize.dp) 
+                .size(iconSize.dp)
+                .offset { androidx.compose.ui.unit.IntOffset(0, dragOffsetY.toInt()) }
+                .pointerInput(sbn.key) {
+                    detectDragGestures(
+                        onDragEnd = {
+                            if (dragOffsetY < -100) {
+                                // Свайп вверх - видаляємо сповіщення
+                                NotificationService.dismissNotification(sbn.key)
+                                android.util.Log.i("MagneticClock", "Сповіщення видалено свайпом: ${sbn.packageName}")
+                            }
+                            dragOffsetY = 0f
+                        },
+                        onDragCancel = { dragOffsetY = 0f },
+                        onDrag = { change, dragAmount ->
+                            dragOffsetY += dragAmount.y
+                            // Обмежуємо рух тільки вверх для візуального відгуку
+                            if (dragOffsetY > 0) dragOffsetY = 0f
+                            change.consume()
+                        }
+                    )
+                }
                 .clickable {
                     val packageName = sbn.packageName
                     val contentIntent = sbn.notification.contentIntent

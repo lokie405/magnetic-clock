@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -96,13 +97,20 @@ class ClockActivity : ComponentActivity() {
             when (intent?.action) {
                 "CLOSE_CLOCK_ACTIVITY" -> finish()
                 "MAGNETIC_FIELD_UPDATE" -> {
-                    currentMagnitude.floatValue = intent.getFloatExtra("magnitude", 0f)
+                    // КРИТИЧНО: Показуємо значення тільки якщо Bluetooth зелений
+                    if (bluetoothConnected.value) {
+                        currentMagnitude.floatValue = intent.getFloatExtra("magnitude", 0f)
+                    } else {
+                        currentMagnitude.floatValue = 0f
+                    }
                 }
                 "IN_CAR_STATUS_UPDATE" -> {
                     // Тепер значок на годиннику синхронізується з логікою сервісу (враховуючи затримку)
-                    bluetoothConnected.value = intent.getBooleanExtra("is_in_car", false)
-                    if (!bluetoothConnected.value) {
+                    val connected = intent.getBooleanExtra("is_in_car", false)
+                    bluetoothConnected.value = connected
+                    if (!connected) {
                         connectedDeviceName.value = ""
+                        currentMagnitude.floatValue = 0f // Примусове скидання при зміні кольору іконки
                     }
                 }
             }
@@ -123,10 +131,40 @@ class ClockActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        
+        Log.i("MagneticClock", "ClockActivity onNewIntent")
+        
+        // Повторно застосовуємо прапорці при отриманні нового інтенту (наприклад, від FullScreenIntent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+        
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+            WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        Log.i("MagneticClock", "ClockActivity onCreate")
+        
         // Покращені прапорці для OnePlus/Android 15
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            keyguardManager.requestDismissKeyguard(this, null)
+        }
+
         window.addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
@@ -134,13 +172,6 @@ class ClockActivity : ComponentActivity() {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
             WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
         )
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            setShowWhenLocked(true)
-            setTurnScreenOn(true)
-            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-            keyguardManager.requestDismissKeyguard(this, null)
-        }
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val controller = WindowCompat.getInsetsController(window, window.decorView)
