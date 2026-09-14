@@ -308,6 +308,44 @@ fun SettingsScreen(
             }
             
             item {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Музика Telegram", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        SettingSwitch("Увімкнути плеєр", settings.isMusicEnabled, Icons.Default.MusicNote) { onSettingsChanged(settings.copy(isMusicEnabled = it)) }
+                        
+                        if (settings.isMusicEnabled) {
+                            SettingsTextField(
+                                label = "Telegram Bot Token",
+                                value = settings.telegramBotToken,
+                                onValueChange = { onSettingsChanged(settings.copy(telegramBotToken = it)) }
+                            )
+                            SettingsTextField(
+                                label = "Channel ID / @name",
+                                value = settings.telegramChannelId,
+                                onValueChange = { onSettingsChanged(settings.copy(telegramChannelId = it)) }
+                            )
+                            Button(
+                                onClick = { com.example.magneticclock.data.MusicPlayerManager.fetchPlaylist(settings.telegramBotToken, settings.telegramChannelId) },
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                            ) {
+                                Text("Оновити плейлист")
+                            }
+                            
+                            val trackCount = com.example.magneticclock.data.MusicPlayerManager.playlist.size
+                            if (trackCount > 0) {
+                                Text(
+                                    text = "Завантажено треків: $trackCount",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Color(0xFF00E676),
+                                    modifier = Modifier.padding(top = 8.dp, start = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(12.dp))
@@ -477,4 +515,30 @@ fun copyFileToInternalStorage(context: Context, uri: Uri): String? {
         return file.absolutePath
     } catch (e: Exception) { e.printStackTrace() }
     return null
+}
+
+@Composable
+fun SettingsTextField(label: String, value: String, onValueChange: (String) -> Unit) {
+    var textState by remember { mutableStateOf(value) }
+    
+    // Синхронізуємо локальний стейт із зовнішнім (тільки якщо вони реально різні)
+    LaunchedEffect(value) {
+        if (textState != value) textState = value
+    }
+
+    // Дебаунс: зберігаємо в DataStore тільки після того, як користувач припинив друкувати (500мс)
+    LaunchedEffect(textState) {
+        if (textState != value) {
+            kotlinx.coroutines.delay(500L)
+            onValueChange(textState)
+        }
+    }
+
+    OutlinedTextField(
+        value = textState,
+        onValueChange = { textState = it },
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        singleLine = true
+    )
 }

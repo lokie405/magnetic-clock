@@ -71,9 +71,9 @@ class MagneticSensorService : Service(), SensorEventListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent == null) {
-            com.example.magneticclock.data.AppLogger.d("Сервіс перезапущено системою без інтенту. Зупиняємося.")
-            stopSelf()
-            return START_NOT_STICKY
+            com.example.magneticclock.data.AppLogger.d("Сервіс перезапущено системою. Перевіряємо стан...")
+            if (!isInCar) checkBluetoothStatus()
+            return START_STICKY
         }
 
         val action = intent.action
@@ -96,15 +96,13 @@ class MagneticSensorService : Service(), SensorEventListener {
         }
 
         if (device != null && isTargetDevice(device)) {
-            com.example.magneticclock.data.AppLogger.i("Пристрій з інтенту відповідає цільовому. Активуємо режим Авто.")
+            com.example.magneticclock.data.AppLogger.i("Пристрій з інтенту підтверджено. Активація.")
             updateInCarState(true)
         } else if (!isInCar && !isCheckingBluetooth) {
-            // Якщо інтент порожній (наприклад, ручний запуск або бут), робимо коротку перевірку
-            com.example.magneticclock.data.AppLogger.d("Запускаємо перевірку підключених Bluetooth пристроїв...")
             checkBluetoothStatus()
         }
 
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun notifyInCarStatus() {
@@ -210,6 +208,7 @@ class MagneticSensorService : Service(), SensorEventListener {
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
             
         settingsManager = SettingsManager(this)
+        com.example.magneticclock.data.MusicPlayerManager.init(this)
         
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
@@ -220,23 +219,37 @@ class MagneticSensorService : Service(), SensorEventListener {
         serviceScope.launch {
             settingsManager.settingsFlow.collect { newSettings ->
                 val wasEnabled = currentSettings.isMonitoringEnabled
+                val wasMusicEnabled = currentSettings.isMusicEnabled
+                val oldToken = currentSettings.telegramBotToken
                 val oldTarget = currentSettings.bluetoothTriggerDeviceName
+                
+                // Оновлюємо поточний стейт ТІЛЬКИ ПІСЛЯ копіювання старих значень для порівняння
                 currentSettings = newSettings
                 
                 intentDevice?.let { device ->
                     if (newSettings.isMonitoringEnabled && com.example.magneticclock.data.DeviceFilter.isTargetDevice(this@MagneticSensorService, device, currentSettings)) {
-                        com.example.magneticclock.data.AppLogger.i("Пристрій з інтенту підтверджено після завантаження налаштувань")
-                        updateInCarState(true)
+                        if (!isInCar) {
+                            com.example.magneticclock.data.AppLogger.i("Пристрій підтверджено після завантаження налаштувань")
+                            updateInCarState(true)
+                        }
                     }
                 }
                 
                 if (newSettings.isMonitoringEnabled != wasEnabled || oldTarget != newSettings.bluetoothTriggerDeviceName) {
                     if (newSettings.isMonitoringEnabled) {
-                        checkBluetoothStatus()
+                        if (!isInCar) checkBluetoothStatus()
                     } else {
                         performFullStop()
                     }
                 }
+
+                // Оновлюємо музику тільки при реальній зміні токена або включенні
+                if (newSettings.isMusicEnabled && newSettings.telegramBotToken.isNotEmpty()) {
+                    if (newSettings.telegramBotToken != oldToken || !wasMusicEnabled) {
+                        com.example.magneticclock.data.MusicPlayerManager.fetchPlaylist(newSettings.telegramBotToken, newSettings.telegramChannelId)
+                    }
+                }
+
                 updateSensorRegistration()
             }
         }
@@ -333,10 +346,12 @@ class MagneticSensorService : Service(), SensorEventListener {
             }
             
             isCheckingBluetooth = false
-            if (!isInCar) {
-                com.example.magneticclock.data.AppLogger.w("Цільовий BT пристрій не знайдено за 30с фонового сканування. Сервіс зупиняється.")
+            if (!isInCar && !isClockShowing) {
+                com.example.magneticclock.data.AppLogger.w("Цільовий BT пристрій не знайдено за 30с. Зупинка сервісу.")
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
+            } else if (!isInCar && isClockShowing) {
+                com.example.magneticclock.data.AppLogger.d("BT не знайдено, але годинник відкритий. Залишаємось активними.")
             }
         }
     }
@@ -492,12 +507,6 @@ class MagneticSensorService : Service(), SensorEventListener {
         
         lastMagnitude = magnitude
 
-        // Оновлюємо сповіщення, якщо сила поля змінилася більше ніж на 5 мкТл
-        if (Math.abs(magnitude - lastNotifiedMagnitude) > 5) {
-            lastNotifiedMagnitude = magnitude
-            updateNotification()
-        }
-
         // Логуємо раз на 5 секунд для дебагу
         if (System.currentTimeMillis() % 5000 < 200) {
             Log.v("MagneticClock", "Sensor active: magnitude=$magnitude, threshold=${currentSettings.activationThreshold}")
@@ -553,6 +562,11 @@ class MagneticSensorService : Service(), SensorEventListener {
     }
 
     private fun startClockActivity() {
+        if (isClockShowing) {
+            com.example.magneticclock.data.AppLogger.d("Спроба запуску ігнорується: Годинник вже на екрані")
+            return
+        }
+
         val intent = Intent(this, ClockActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
                      Intent.FLAG_ACTIVITY_SINGLE_TOP or 

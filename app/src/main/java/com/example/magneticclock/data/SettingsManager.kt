@@ -56,6 +56,10 @@ class SettingsManager(private val context: Context) {
         
         val ACTIVATION_VIBRATION = intPreferencesKey("activation_vibration")
         val DEACTIVATION_VIBRATION = intPreferencesKey("deactivation_vibration")
+        
+        val IS_MUSIC_ENABLED = booleanPreferencesKey("is_music_enabled")
+        val TELEGRAM_BOT_TOKEN = stringPreferencesKey("telegram_bot_token")
+        val TELEGRAM_CHANNEL_ID = stringPreferencesKey("telegram_channel_id")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
@@ -95,7 +99,10 @@ class SettingsManager(private val context: Context) {
             customDateFontPath = preferences[Keys.CUSTOM_DATE_FONT],
             customBatteryFontPath = preferences[Keys.CUSTOM_BATTERY_FONT],
             activationVibrationIntensity = preferences[Keys.ACTIVATION_VIBRATION] ?: 0,
-            deactivationVibrationIntensity = preferences[Keys.DEACTIVATION_VIBRATION] ?: 0
+            deactivationVibrationIntensity = preferences[Keys.DEACTIVATION_VIBRATION] ?: 0,
+            isMusicEnabled = preferences[Keys.IS_MUSIC_ENABLED] ?: false,
+            telegramBotToken = preferences[Keys.TELEGRAM_BOT_TOKEN] ?: "",
+            telegramChannelId = preferences[Keys.TELEGRAM_CHANNEL_ID] ?: ""
         )
     }
 
@@ -143,6 +150,10 @@ class SettingsManager(private val context: Context) {
             
             preferences[Keys.ACTIVATION_VIBRATION] = settings.activationVibrationIntensity
             preferences[Keys.DEACTIVATION_VIBRATION] = settings.deactivationVibrationIntensity
+            
+            preferences[Keys.IS_MUSIC_ENABLED] = settings.isMusicEnabled
+            preferences[Keys.TELEGRAM_BOT_TOKEN] = settings.telegramBotToken
+            preferences[Keys.TELEGRAM_CHANNEL_ID] = settings.telegramChannelId
         }
     }
 }

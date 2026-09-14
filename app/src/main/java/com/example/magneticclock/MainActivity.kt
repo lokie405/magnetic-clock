@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settingsManager = SettingsManager(this)
+        com.example.magneticclock.data.MusicPlayerManager.init(this)
         
         isFromClock.value = intent.getBooleanExtra("from_clock", false)
 

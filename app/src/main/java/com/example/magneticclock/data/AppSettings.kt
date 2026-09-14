@@ -45,4 +45,9 @@ data class AppSettings(
     
     val activationVibrationIntensity: Int = 0,
     val deactivationVibrationIntensity: Int = 0,
+    
+    // Telegram Music
+    val isMusicEnabled: Boolean = false,
+    val telegramBotToken: String = "",
+    val telegramChannelId: String = "",
 )

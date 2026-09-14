@@ -226,6 +226,11 @@ fun ClassicLayout(settings: AppSettings, currentTime: Date, speed: Float, tripSt
             if (isTripActive) TripStats(tripStartTime, tripDistance, contentColor)
         }
 
+        if (settings.isMusicEnabled) {
+            Spacer(Modifier.height(24.dp))
+            MusicPlayerControls(settings, contentColor)
+        }
+
         Spacer(Modifier.height(32.dp))
         ControlButtonsRow(settings, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
         
@@ -269,6 +274,11 @@ fun SpeedFocusLayout(settings: AppSettings, currentTime: Date, speed: Float, tri
             if (isTripActive) TripStats(tripStartTime, tripDistance, secondaryColor)
         }
         
+        if (settings.isMusicEnabled) {
+            Spacer(Modifier.height(24.dp))
+            MusicPlayerControls(settings, contentColor)
+        }
+        
         Spacer(Modifier.height(32.dp))
         ControlButtonsRow(settings, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
     }
@@ -282,6 +292,12 @@ fun BigDigitalLayout(settings: AppSettings, currentTime: Date, speed: Float, con
         Text(text = hour, color = if (settings.isOnePlusStyle && hour.startsWith("1")) Color.Red else contentColor, fontSize = settings.clockSizeSp.sp, fontWeight = FontWeight.Black, fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath))
         Text(text = min, color = if (settings.isOnePlusStyle && min.startsWith("1")) Color.Red else contentColor, fontSize = settings.clockSizeSp.sp, fontWeight = FontWeight.Black, fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath))
         if (settings.showSpeed) Text("${speed.toInt()} km/h", color = Color(0xFF00E676), fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        
+        if (settings.isMusicEnabled) {
+            Spacer(Modifier.height(24.dp))
+            MusicPlayerControls(settings, contentColor)
+        }
+        
         Spacer(Modifier.height(24.dp))
         ControlButtonsRow(settings, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
     }
@@ -293,6 +309,11 @@ fun MinimalistLayout(settings: AppSettings, currentTime: Date, speed: Float, con
         Column(Modifier.align(Alignment.BottomStart)) {
             Text(text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(currentTime), color = contentColor, fontSize = (settings.clockSizeSp * 0.7).sp, fontWeight = FontWeight.Light, fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath))
             if (settings.showSpeed) Text(text = "${speed.toInt()} km/h", color = secondaryColor, fontSize = 24.sp)
+            
+            if (settings.isMusicEnabled) {
+                Spacer(Modifier.height(16.dp))
+                MusicPlayerControls(settings, contentColor)
+            }
         }
         Box(Modifier.align(Alignment.BottomEnd)) {
             ControlButtonsRow(settings, contentColor.copy(alpha = 0.5f), onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
@@ -487,4 +508,85 @@ private fun getWeatherColor(code: Int) = when (code) {
     0 -> Color(0xFFFFD600)
     1, 2, 3 -> Color.Gray
     else -> Color(0xFF29B6F6)
+}
+
+@Composable
+fun MusicPlayerControls(settings: AppSettings, contentColor: Color) {
+    if (!settings.isMusicEnabled) return
+    
+    val musicManager = com.example.magneticclock.data.MusicPlayerManager
+    val track = musicManager.currentTrack
+    val isPlaying = musicManager.isPlaying
+    val position = musicManager.playbackPosition
+    val duration = musicManager.duration
+    val currentIndex = musicManager.currentTrackIndex
+    val totalTracks = musicManager.playlist.size
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Track Info
+        Text(
+            text = if (totalTracks > 0) "$currentIndex / $totalTracks" else "0 / 0",
+            color = Color(0xFFFFB74D), // Помаранчевий колір
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = track?.title ?: "Немає треку",
+            color = contentColor,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
+        Text(
+            text = track?.artist ?: "Плейлист порожній",
+            color = contentColor.copy(alpha = 0.7f),
+            fontSize = 12.sp,
+            maxLines = 1
+        )
+        
+        Spacer(Modifier.height(8.dp))
+        
+        // Progress Bar (Slider)
+        Slider(
+            value = if (duration > 0) position.toFloat() / duration else 0f,
+            onValueChange = { musicManager.seekTo((it * duration).toLong()) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = SliderDefaults.colors(
+                thumbColor = Color.Green,
+                activeTrackColor = Color.Green,
+                inactiveTrackColor = contentColor.copy(alpha = 0.3f)
+            )
+        )
+        
+        // Buttons
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            IconButton(onClick = { musicManager.previous() }) {
+                Icon(Icons.Default.SkipPrevious, contentDescription = null, tint = contentColor, modifier = Modifier.size(32.dp))
+            }
+            
+            IconButton(
+                onClick = { musicManager.playPause() },
+                modifier = Modifier.size(48.dp).background(Color.Green.copy(alpha = 0.2f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.Green,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+            
+            IconButton(onClick = { musicManager.next() }) {
+                Icon(Icons.Default.SkipNext, contentDescription = null, tint = contentColor, modifier = Modifier.size(32.dp))
+            }
+        }
+    }
 }
