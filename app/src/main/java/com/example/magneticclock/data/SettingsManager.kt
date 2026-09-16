@@ -22,7 +22,6 @@ class SettingsManager(private val context: Context) {
         val TRIGGER_DELAY_ACTIVATION = longPreferencesKey("trigger_delay_activation")
         val TRIGGER_DELAY_DEACTIVATION = longPreferencesKey("trigger_delay_deactivation")
         val IN_CAR_DEACTIVATION_DELAY = longPreferencesKey("in_car_deactivation_delay")
-        val SETTINGS_RETURN_DELAY = floatPreferencesKey("settings_return_delay")
         
         val CLOCK_SIZE = intPreferencesKey("clock_size")
         val NOTIFICATION_ICON_SIZE = intPreferencesKey("notification_icon_size")
@@ -72,7 +71,6 @@ class SettingsManager(private val context: Context) {
             triggerDelayActivationMs = preferences[Keys.TRIGGER_DELAY_ACTIVATION] ?: 1000L,
             triggerDelayDeactivationMs = preferences[Keys.TRIGGER_DELAY_DEACTIVATION] ?: 1000L,
             inCarDeactivationDelayMs = preferences[Keys.IN_CAR_DEACTIVATION_DELAY] ?: 2000L,
-            settingsReturnDelaySeconds = preferences[Keys.SETTINGS_RETURN_DELAY] ?: 5.0f,
             clockSizeSp = preferences[Keys.CLOCK_SIZE] ?: 180,
             notificationIconSizeSp = preferences[Keys.NOTIFICATION_ICON_SIZE] ?: 44,
             controlButtonSizeSp = preferences[Keys.CONTROL_BUTTON_SIZE] ?: 24,
@@ -120,7 +118,6 @@ class SettingsManager(private val context: Context) {
             preferences[Keys.TRIGGER_DELAY_ACTIVATION] = settings.triggerDelayActivationMs
             preferences[Keys.TRIGGER_DELAY_DEACTIVATION] = settings.triggerDelayDeactivationMs
             preferences[Keys.IN_CAR_DEACTIVATION_DELAY] = settings.inCarDeactivationDelayMs
-            preferences[Keys.SETTINGS_RETURN_DELAY] = settings.settingsReturnDelaySeconds
             preferences[Keys.CLOCK_SIZE] = settings.clockSizeSp
             preferences[Keys.NOTIFICATION_ICON_SIZE] = settings.notificationIconSizeSp
             preferences[Keys.CONTROL_BUTTON_SIZE] = settings.controlButtonSizeSp

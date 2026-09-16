@@ -271,6 +271,7 @@ class ClockActivity : ComponentActivity() {
                 tripStartTime = TripManager.tripStartTime,
                 tripDistance = TripManager.tripDistance,
                 isTripActive = TripManager.isTripActive,
+                isTripPaused = TripManager.isTripPaused,
                 bluetoothConnected = bluetoothConnected.value,
                 connectedDeviceName = connectedDeviceName.value,
                 isPowerSaveMode = isPowerSaveMode.value,
@@ -292,7 +293,9 @@ class ClockActivity : ComponentActivity() {
                     startActivity(homeIntent)
                 },
                 onMockMove = { TripManager.toggleSpeedSimulation() },
-                onStartTrip = { TripManager.resetTrip() /* Manual start handled by speed now */ },
+                onStartTrip = { TripManager.startTripManual() },
+                onPauseTrip = { TripManager.pauseTripManual() },
+                onStopTrip = { TripManager.stopTripManual(this@ClockActivity) },
                 onPowerOff = {
                     scope.launch {
                         sendBroadcast(Intent("CLOCK_CLOSED_MANUALLY").apply { setPackage(packageName) })

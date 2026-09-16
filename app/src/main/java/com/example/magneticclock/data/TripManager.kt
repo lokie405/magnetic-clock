@@ -17,7 +17,8 @@ object TripManager {
 
     var tripStartTime by mutableLongStateOf(0L)
     var tripDistance by mutableDoubleStateOf(0.0)
-    var isTripActive by mutableStateOf(false) // True if we should be recording (driveCar active)
+    var isTripActive by mutableStateOf(false) // True if we are recording
+    var isTripPaused by mutableStateOf(false)
     
     private var lastLocation: Location? = null
     var currentSpeedKmH by mutableStateOf(0f)
@@ -54,14 +55,18 @@ object TripManager {
         
         currentSpeedKmH = speed
 
-        // Requirement: driveCar starts when speed >= 2 km/h 
-        // AND (implicitly) we are inCar and Magnet is on (service ensures updateLocation only called then)
-        if (speed >= 2.0f && tripStartTime == 0L) {
-            startTrip(location.latitude, location.longitude)
-        }
+        // Accumulate distance if trip is active and NOT paused
+        if (isTripActive && !isTripPaused) {
+            if (tripStartTime == 0L) {
+                // Пряма ініціалізація, якщо натиснули старт без GPS координат
+                tripStartTime = System.currentTimeMillis()
+                startLat = location.latitude
+                startLng = location.longitude
+                routePoints.clear()
+                routePoints.add("${location.latitude},${location.longitude}")
+                lastRoutePointTime = tripStartTime
+            }
 
-        // Accumulate distance if trip is active
-        if (tripStartTime > 0L) {
             lastLocation?.let { prev ->
                 val distanceMeters = location.distanceTo(prev)
                 // Додаємо дистанцію лише при русі (враховуємо швидкість або мінімальний зсув)
@@ -83,12 +88,44 @@ object TripManager {
         lastLocation = location
     }
 
+    fun startTripManual() {
+        if (!isTripActive) {
+            val now = System.currentTimeMillis()
+            AppLogger.i("ПОЇЗДКА: Ручний СТАРТ о ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(now))}")
+            isTripActive = true
+            isTripPaused = false
+            tripStartTime = now
+            tripDistance = 0.0
+            routePoints.clear()
+            // Координати будуть підхоплені в updateLocation при отриманні першої точки
+        } else if (isTripPaused) {
+            AppLogger.i("ПОЇЗДКА: ПРОДОВЖЕННЯ")
+            isTripPaused = false
+        }
+    }
+
+    fun pauseTripManual() {
+        if (isTripActive && !isTripPaused) {
+            AppLogger.i("ПОЇЗДКА: ПАУЗА")
+            isTripPaused = true
+        }
+    }
+
+    fun stopTripManual(context: Context) {
+        if (isTripActive) {
+            val now = System.currentTimeMillis()
+            AppLogger.w("ПОЇЗДКА: Ручний СТОП о ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(now))}")
+            finalizeAndSave(context)
+        }
+    }
+
     private fun startTrip(lat: Double, lng: Double) {
-        Log.i("TripManager", "Drive started (driveCar). Speed: $currentSpeedKmH")
+        Log.i("TripManager", "Simulation/Auto started. Speed: $currentSpeedKmH")
         tripStartTime = System.currentTimeMillis()
         startLat = lat
         startLng = lng
         isTripActive = true
+        isTripPaused = false
         routePoints.clear()
         routePoints.add("$lat,$lng")
         lastRoutePointTime = tripStartTime
@@ -98,8 +135,8 @@ object TripManager {
      * Called by Service when inCar ends (driveEnd).
      */
     fun onBluetoothDisconnected(context: Context) {
-        Log.d("TripManager", "driveEnd: inCar finished. Saving if driveCar was active.")
-        if (tripStartTime > 0L) {
+        Log.d("TripManager", "driveEnd: BT disconnected. Saving if trip was active.")
+        if (isTripActive) {
             finalizeAndSave(context)
         } else {
             resetTrip()
@@ -163,6 +200,7 @@ object TripManager {
         tripStartTime = 0L
         tripDistance = 0.0
         isTripActive = false
+        isTripPaused = false
         lastLocation = null
         currentSpeedKmH = 0f
         routePoints.clear()

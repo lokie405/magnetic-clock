@@ -18,16 +18,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.JournalManager
 import com.example.magneticclock.data.SettingsManager
 import com.example.magneticclock.data.TripEntry
 import com.example.magneticclock.ui.SettingsScreen
 import com.example.magneticclock.ui.TripListScreen
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -137,7 +134,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Прибрано автоповернення по таймеру за запитом користувача
+
 
             MaterialTheme(
                 colorScheme = if (settingsState.isDarkMode) darkColorScheme() else lightColorScheme(),

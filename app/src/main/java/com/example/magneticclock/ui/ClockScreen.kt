@@ -8,12 +8,14 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -21,9 +23,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import android.app.ActivityOptions
@@ -31,6 +30,7 @@ import android.os.Build
 import com.example.magneticclock.NotificationService
 import com.example.magneticclock.data.AppSettings
 import com.example.magneticclock.data.WeatherData
+import com.example.magneticclock.data.TripManager
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -48,6 +48,7 @@ fun ClockScreen(
     tripStartTime: Long,
     tripDistance: Double,
     isTripActive: Boolean,
+    isTripPaused: Boolean,
     bluetoothConnected: Boolean,
     connectedDeviceName: String,
     isPowerSaveMode: Boolean,
@@ -58,6 +59,8 @@ fun ClockScreen(
     onSwipeUp: () -> Unit,
     onMockMove: () -> Unit,
     onStartTrip: () -> Unit,
+    onPauseTrip: () -> Unit,
+    onStopTrip: () -> Unit,
     onPowerOff: () -> Unit,
     onPowerSaveToggle: () -> Unit,
     onClose: () -> Unit,
@@ -92,15 +95,11 @@ fun ClockScreen(
             .offset { offset },
         contentAlignment = Alignment.Center,
     ) {
-        // Фоновий шар для жестів (налаштування, голос, свайпи)
-        // Він займає весь екран, але значки сповіщень будуть ПОВЕРХ нього
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = { onDoubleTap() }
-                    )
+                    detectTapGestures(onDoubleTap = { onDoubleTap() })
                 }
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
@@ -176,10 +175,10 @@ fun ClockScreen(
 
         // Main Layouts
         when (settings.layoutIndex) {
-            1 -> SpeedFocusLayout(settings, currentTime, speed, tripStartTime, tripDistance, isTripActive, contentColor, secondaryColor, onMockMove, onStartTrip, onPowerOff, onSettingsClick, onSettingsChanged)
-            2 -> BigDigitalLayout(settings, currentTime, speed, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
-            3 -> MinimalistLayout(settings, currentTime, speed, contentColor, secondaryColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
-            else -> ClassicLayout(settings, currentTime, speed, tripStartTime, tripDistance, isTripActive, contentColor, secondaryColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
+            1 -> SpeedFocusLayout(settings, currentTime, speed, tripStartTime, tripDistance, isTripActive, isTripPaused, contentColor, secondaryColor, onMockMove, onStartTrip, onPauseTrip, onStopTrip, onPowerOff, onSettingsClick, onSettingsChanged)
+            2 -> BigDigitalLayout(settings, currentTime, speed, isTripActive, isTripPaused, contentColor, onMockMove, onStartTrip, onPauseTrip, onStopTrip, onPowerOff, onSettingsClick, onSettingsChanged)
+            3 -> MinimalistLayout(settings, currentTime, speed, isTripActive, isTripPaused, contentColor, secondaryColor, onMockMove, onStartTrip, onPauseTrip, onStopTrip, onPowerOff, onSettingsClick, onSettingsChanged)
+            else -> ClassicLayout(settings, currentTime, speed, tripStartTime, tripDistance, isTripActive, isTripPaused, contentColor, secondaryColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged, onStartTrip, onPauseTrip, onStopTrip)
         }
     }
 }
@@ -214,7 +213,24 @@ fun PhoneTempInfo(temp: Float, isPowerSaveMode: Boolean, onPowerSaveToggle: () -
 }
 
 @Composable
-fun ClassicLayout(settings: AppSettings, currentTime: Date, speed: Float, tripStartTime: Long, tripDistance: Double, isTripActive: Boolean, contentColor: Color, secondaryColor: Color, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
+fun ClassicLayout(
+    settings: AppSettings, 
+    currentTime: Date, 
+    speed: Float, 
+    tripStartTime: Long, 
+    tripDistance: Double, 
+    isTripActive: Boolean, 
+    isTripPaused: Boolean,
+    contentColor: Color, 
+    secondaryColor: Color, 
+    onMockMove: () -> Unit, 
+    onPowerOff: () -> Unit, 
+    onSettingsClick: () -> Unit, 
+    onSettingsChanged: (AppSettings) -> Unit,
+    onStartTrip: () -> Unit,
+    onPauseTrip: () -> Unit,
+    onStopTrip: () -> Unit
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         if (settings.showUnreadNotificationIcons) NotificationIconsRow(settings)
         TimeRow(settings, currentTime, contentColor)
@@ -233,6 +249,8 @@ fun ClassicLayout(settings: AppSettings, currentTime: Date, speed: Float, tripSt
 
         Spacer(Modifier.height(32.dp))
         ControlButtonsRow(settings, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
+        
+        TripControlRow(isTripActive, isTripPaused, contentColor, onStartTrip, onPauseTrip, onStopTrip)
         
         AnimatedVisibility(visible = !settings.isAutoBrightness) {
             Column {
@@ -262,7 +280,24 @@ fun TripStats(startTime: Long, distance: Double, color: Color) {
 }
 
 @Composable
-fun SpeedFocusLayout(settings: AppSettings, currentTime: Date, speed: Float, tripStartTime: Long, tripDistance: Double, isTripActive: Boolean, contentColor: Color, secondaryColor: Color, onMockMove: () -> Unit, onStartTrip: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
+fun SpeedFocusLayout(
+    settings: AppSettings, 
+    currentTime: Date, 
+    speed: Float, 
+    tripStartTime: Long, 
+    tripDistance: Double, 
+    isTripActive: Boolean, 
+    isTripPaused: Boolean,
+    contentColor: Color, 
+    secondaryColor: Color, 
+    onMockMove: () -> Unit, 
+    onStartTrip: () -> Unit, 
+    onPauseTrip: () -> Unit,
+    onStopTrip: () -> Unit,
+    onPowerOff: () -> Unit, 
+    onSettingsClick: () -> Unit, 
+    onSettingsChanged: (AppSettings) -> Unit
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(currentTime), color = contentColor, fontSize = (settings.clockSizeSp * 0.5).sp, fontWeight = FontWeight.Bold, fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath))
         
@@ -281,11 +316,27 @@ fun SpeedFocusLayout(settings: AppSettings, currentTime: Date, speed: Float, tri
         
         Spacer(Modifier.height(32.dp))
         ControlButtonsRow(settings, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
+        
+        TripControlRow(isTripActive, isTripPaused, contentColor, onStartTrip, onPauseTrip, onStopTrip)
     }
 }
 
 @Composable
-fun BigDigitalLayout(settings: AppSettings, currentTime: Date, speed: Float, contentColor: Color, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
+fun BigDigitalLayout(
+    settings: AppSettings, 
+    currentTime: Date, 
+    speed: Float, 
+    isTripActive: Boolean,
+    isTripPaused: Boolean,
+    contentColor: Color, 
+    onMockMove: () -> Unit, 
+    onStartTrip: () -> Unit,
+    onPauseTrip: () -> Unit,
+    onStopTrip: () -> Unit,
+    onPowerOff: () -> Unit, 
+    onSettingsClick: () -> Unit, 
+    onSettingsChanged: (AppSettings) -> Unit
+) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         val hour = SimpleDateFormat("HH", Locale.getDefault()).format(currentTime)
         val min = SimpleDateFormat("mm", Locale.getDefault()).format(currentTime)
@@ -300,11 +351,28 @@ fun BigDigitalLayout(settings: AppSettings, currentTime: Date, speed: Float, con
         
         Spacer(Modifier.height(24.dp))
         ControlButtonsRow(settings, contentColor, onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
+        
+        TripControlRow(isTripActive, isTripPaused, contentColor, onStartTrip, onPauseTrip, onStopTrip)
     }
 }
 
 @Composable
-fun MinimalistLayout(settings: AppSettings, currentTime: Date, speed: Float, contentColor: Color, secondaryColor: Color, onMockMove: () -> Unit, onPowerOff: () -> Unit, onSettingsClick: () -> Unit, onSettingsChanged: (AppSettings) -> Unit) {
+fun MinimalistLayout(
+    settings: AppSettings, 
+    currentTime: Date, 
+    speed: Float, 
+    isTripActive: Boolean,
+    isTripPaused: Boolean,
+    contentColor: Color, 
+    secondaryColor: Color, 
+    onMockMove: () -> Unit, 
+    onStartTrip: () -> Unit,
+    onPauseTrip: () -> Unit,
+    onStopTrip: () -> Unit,
+    onPowerOff: () -> Unit, 
+    onSettingsClick: () -> Unit, 
+    onSettingsChanged: (AppSettings) -> Unit
+) {
     Box(Modifier.fillMaxSize().padding(32.dp)) {
         Column(Modifier.align(Alignment.BottomStart)) {
             Text(text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(currentTime), color = contentColor, fontSize = (settings.clockSizeSp * 0.7).sp, fontWeight = FontWeight.Light, fontFamily = getFontFamily(settings.clockFont, settings.customClockFontPath))
@@ -314,9 +382,68 @@ fun MinimalistLayout(settings: AppSettings, currentTime: Date, speed: Float, con
                 Spacer(Modifier.height(16.dp))
                 MusicPlayerControls(settings, contentColor)
             }
+            
+            TripControlRow(isTripActive, isTripPaused, contentColor, onStartTrip, onPauseTrip, onStopTrip)
         }
         Box(Modifier.align(Alignment.BottomEnd)) {
             ControlButtonsRow(settings, contentColor.copy(alpha = 0.5f), onMockMove, onPowerOff, onSettingsClick, onSettingsChanged)
+        }
+    }
+}
+
+@Composable
+fun TripControlRow(
+    isTripActive: Boolean,
+    isTripPaused: Boolean,
+    contentColor: Color,
+    onStartTrip: () -> Unit,
+    onPauseTrip: () -> Unit,
+    onStopTrip: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(top = 12.dp)
+    ) {
+        if (!isTripActive) {
+            // Маленька, неяскрава кнопка старту
+            IconButton(
+                onClick = onStartTrip,
+                modifier = Modifier.size(40.dp).background(contentColor.copy(alpha = 0.1f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow, 
+                    contentDescription = "Старт поїздки", 
+                    tint = contentColor.copy(alpha = 0.5f),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        } else {
+            // Пауза / Продовжити
+            IconButton(
+                onClick = if (isTripPaused) onStartTrip else onPauseTrip,
+                modifier = Modifier.size(40.dp).background(if (isTripPaused) Color.Yellow.copy(alpha = 0.2f) else contentColor.copy(alpha = 0.1f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (isTripPaused) Icons.Default.PlayArrow else Icons.Default.Pause, 
+                    contentDescription = null,
+                    tint = if (isTripPaused) Color.Yellow else contentColor.copy(alpha = 0.6f)
+                )
+            }
+            
+            Spacer(Modifier.width(24.dp))
+            
+            // СТОП
+            IconButton(
+                onClick = onStopTrip,
+                modifier = Modifier.size(40.dp).background(Color.Red.copy(alpha = 0.2f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Stop, 
+                    contentDescription = "Стоп", 
+                    tint = Color.Red.copy(alpha = 0.8f)
+                )
+            }
         }
     }
 }
@@ -328,14 +455,12 @@ fun ControlButtonsRow(settings: AppSettings, contentColor: Color, onMockMove: ()
             Icon(Icons.Default.BrightnessAuto, contentDescription = null, tint = if (settings.isAutoBrightness) Color.Green else contentColor, modifier = Modifier.size(settings.controlButtonSizeSp.dp))
         }
         Spacer(Modifier.width(24.dp))
-        // Settings Gear Button
         IconButton(onClick = onSettingsClick) {
             Icon(Icons.Default.Settings, contentDescription = "Налаштування", tint = contentColor, modifier = Modifier.size(settings.controlButtonSizeSp.dp))
         }
         Spacer(Modifier.width(24.dp))
-        // Mock Movement Button
         IconButton(onClick = onMockMove) { 
-            Icon(Icons.Default.DirectionsCar, contentDescription = "Mock Move", tint = if (com.example.magneticclock.data.TripManager.isTripActive && com.example.magneticclock.data.TripManager.currentSpeedKmH > 0) Color.Green else contentColor, modifier = Modifier.size(settings.controlButtonSizeSp.dp)) 
+            Icon(Icons.Default.DirectionsCar, contentDescription = "Mock Move", tint = if (TripManager.isTripActive && TripManager.currentSpeedKmH > 0) Color.Green else contentColor, modifier = Modifier.size(settings.controlButtonSizeSp.dp)) 
         }
         Spacer(Modifier.width(24.dp))
         IconButton(onClick = onPowerOff) { Icon(Icons.Default.PowerSettingsNew, contentDescription = null, tint = Color.Red, modifier = Modifier.size(settings.controlButtonSizeSp.dp)) }
@@ -351,8 +476,6 @@ fun BrightnessSliderOnly(settings: AppSettings, contentColor: Color, onSettingsC
 fun NotificationIconsRow(settings: AppSettings) {
     val context = LocalContext.current
     val activeNotifications = NotificationService.notificationList
-    
-    // Фільтруємо власне сповіщення програми та показуємо всі інші (включаючи беззвучні)
     val filteredNotifications = remember(activeNotifications.size) {
         activeNotifications.filter { it.packageName != context.packageName }
     }
@@ -373,28 +496,16 @@ fun NotificationIcon(context: android.content.Context, sbn: android.service.noti
     
     val icon = remember(packageName, iconId, sbn.postTime) {
         try {
-            // 1. Спробуємо отримати "Великий значок" (це зазвичай аватар або іконка події)
             val largeIcon = sbn.notification.getLargeIcon()?.loadDrawable(context)
-            if (largeIcon != null) {
-                return@remember largeIcon.toBitmap().asImageBitmap()
-            }
-            
-            // 2. Якщо великого немає, спробуємо "Маленький значок" (той, що в статус-барі)
+            if (largeIcon != null) return@remember largeIcon.toBitmap().asImageBitmap()
             val smallIcon = sbn.notification.smallIcon?.loadDrawable(context)
-            if (smallIcon != null) {
-                return@remember smallIcon.toBitmap().asImageBitmap()
-            }
-            
-            // 3. Крайній випадок - іконка самої програми
+            if (smallIcon != null) return@remember smallIcon.toBitmap().asImageBitmap()
             context.packageManager.getApplicationIcon(packageName).toBitmap().asImageBitmap()
-        } catch (_: Exception) {
-            null
-        }
+        } catch (_: Exception) { null }
     }
     
     icon?.let {
         var dragOffsetY by remember { mutableFloatStateOf(0f) }
-        
         androidx.compose.foundation.Image(
             bitmap = it, 
             contentDescription = null, 
@@ -404,59 +515,32 @@ fun NotificationIcon(context: android.content.Context, sbn: android.service.noti
                 .pointerInput(sbn.key) {
                     detectDragGestures(
                         onDragEnd = {
-                            if (dragOffsetY < -100) {
-                                // Свайп вверх - видаляємо сповіщення
-                                NotificationService.dismissNotification(sbn.key)
-                                android.util.Log.i("MagneticClock", "Сповіщення видалено свайпом: ${sbn.packageName}")
-                            }
+                            if (dragOffsetY < -100) NotificationService.dismissNotification(sbn.key)
                             dragOffsetY = 0f
                         },
                         onDragCancel = { dragOffsetY = 0f },
                         onDrag = { change, dragAmount ->
                             dragOffsetY += dragAmount.y
-                            // Обмежуємо рух тільки вверх для візуального відгуку
                             if (dragOffsetY > 0) dragOffsetY = 0f
                             change.consume()
                         }
                     )
                 }
                 .clickable {
-                    val packageName = sbn.packageName
-                    val contentIntent = sbn.notification.contentIntent
-                    android.util.Log.d("MagneticClock", "Клік по іконці: $packageName")
-                    
                     try {
-                        val options = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            ActivityOptions.makeBasic()
-                                .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
-                                .toBundle()
-                        } else null
-
+                        val contentIntent = sbn.notification.contentIntent
                         if (contentIntent != null) {
-                            // 1. Відправляємо наказ відкрити чат/програму через IntentSender
-                            (context as? android.app.Activity)?.startIntentSender(
-                                contentIntent.intentSender,
-                                null,
-                                0, 0, 0,
-                                options
-                            )
-                            
-                            // 2. МИТТЄВО згортаємо годинник, щоб побачити результат
+                            (context as? android.app.Activity)?.startIntentSender(contentIntent.intentSender, null, 0, 0, 0)
                             (context as? android.app.Activity)?.moveTaskToBack(true)
-                            
-                            android.util.Log.i("MagneticClock", "IntentSender відправлено, годинник згорнуто")
                         } else {
-                            // Якщо немає прямого посилання (contentIntent), просто відкриваємо програму
                             val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
                             launchIntent?.let { intent -> 
                                 intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent, options) 
+                                context.startActivity(intent) 
                                 (context as? android.app.Activity)?.moveTaskToBack(true)
                             }
                         }
-                    } catch (e: Exception) {
-                        android.util.Log.e("MagneticClock", "Критична помилка при відкритті: ${e.message}")
-                    }
+                    } catch (_: Exception) {}
                 }
         )
     }
@@ -513,7 +597,6 @@ private fun getWeatherColor(code: Int) = when (code) {
 @Composable
 fun MusicPlayerControls(settings: AppSettings, contentColor: Color) {
     if (!settings.isMusicEnabled) return
-    
     val musicManager = com.example.magneticclock.data.MusicPlayerManager
     val track = musicManager.currentTrack
     val isPlaying = musicManager.isPlaying
@@ -522,71 +605,16 @@ fun MusicPlayerControls(settings: AppSettings, contentColor: Color) {
     val currentIndex = musicManager.currentTrackIndex
     val totalTracks = musicManager.playlist.size
     
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Track Info
-        Text(
-            text = if (totalTracks > 0) "$currentIndex / $totalTracks" else "0 / 0",
-            color = Color(0xFFFFB74D), // Помаранчевий колір
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = track?.title ?: "Немає треку",
-            color = contentColor,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1
-        )
-        Text(
-            text = track?.artist ?: "Плейлист порожній",
-            color = contentColor.copy(alpha = 0.7f),
-            fontSize = 12.sp,
-            maxLines = 1
-        )
-        
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = if (totalTracks > 0) "$currentIndex / $totalTracks" else "0 / 0", color = Color(0xFFFFB74D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        Text(text = track?.title ?: "Немає треку", color = contentColor, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(text = track?.artist ?: "Плейлист порожній", color = contentColor.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1)
         Spacer(Modifier.height(8.dp))
-        
-        // Progress Bar (Slider)
-        Slider(
-            value = if (duration > 0) position.toFloat() / duration else 0f,
-            onValueChange = { musicManager.seekTo((it * duration).toLong()) },
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(
-                thumbColor = Color.Green,
-                activeTrackColor = Color.Green,
-                inactiveTrackColor = contentColor.copy(alpha = 0.3f)
-            )
-        )
-        
-        // Buttons
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            IconButton(onClick = { musicManager.previous() }) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = null, tint = contentColor, modifier = Modifier.size(32.dp))
-            }
-            
-            IconButton(
-                onClick = { musicManager.playPause() },
-                modifier = Modifier.size(48.dp).background(Color.Green.copy(alpha = 0.2f), CircleShape)
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = Color.Green,
-                    modifier = Modifier.size(36.dp)
-                )
-            }
-            
-            IconButton(onClick = { musicManager.next() }) {
-                Icon(Icons.Default.SkipNext, contentDescription = null, tint = contentColor, modifier = Modifier.size(32.dp))
-            }
+        Slider(value = if (duration > 0) position.toFloat() / duration else 0f, onValueChange = { musicManager.seekTo((it * duration).toLong()) }, modifier = Modifier.fillMaxWidth(), colors = SliderDefaults.colors(thumbColor = Color.Green, activeTrackColor = Color.Green, inactiveTrackColor = contentColor.copy(alpha = 0.3f)))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            IconButton(onClick = { musicManager.previous() }) { Icon(Icons.Default.SkipPrevious, contentDescription = null, tint = contentColor, modifier = Modifier.size(32.dp)) }
+            IconButton(onClick = { musicManager.playPause() }, modifier = Modifier.size(48.dp).background(Color.Green.copy(alpha = 0.2f), CircleShape)) { Icon(imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null, tint = Color.Green, modifier = Modifier.size(36.dp)) }
+            IconButton(onClick = { musicManager.next() }) { Icon(Icons.Default.SkipNext, contentDescription = null, tint = contentColor, modifier = Modifier.size(32.dp)) }
         }
     }
 }

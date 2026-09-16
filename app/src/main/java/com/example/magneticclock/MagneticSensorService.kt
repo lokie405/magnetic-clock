@@ -246,7 +246,7 @@ class MagneticSensorService : Service(), SensorEventListener {
                 // Оновлюємо музику тільки при реальній зміні токена або включенні
                 if (newSettings.isMusicEnabled && newSettings.telegramBotToken.isNotEmpty()) {
                     if (newSettings.telegramBotToken != oldToken || !wasMusicEnabled) {
-                        com.example.magneticclock.data.MusicPlayerManager.fetchPlaylist(newSettings.telegramBotToken, newSettings.telegramChannelId)
+                        com.example.magneticclock.data.MusicPlayerManager.fetchPlaylist(this@MagneticSensorService, newSettings.telegramBotToken, newSettings.telegramChannelId)
                     }
                 }
 
@@ -278,7 +278,9 @@ class MagneticSensorService : Service(), SensorEventListener {
         
         // Початковий запуск сервісу в режимі "тиші"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(1, createMonitoringNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            startForeground(1, createMonitoringNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, createMonitoringNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         } else {
             startForeground(1, createMonitoringNotification())
         }
@@ -626,6 +628,7 @@ class MagneticSensorService : Service(), SensorEventListener {
             if (hasFineLocation || hasCoarseLocation) {
                 type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
             }
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE

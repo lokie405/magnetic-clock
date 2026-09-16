@@ -11,7 +11,6 @@ data class AppSettings(
     val triggerDelayActivationMs: Long = 1000L,
     val triggerDelayDeactivationMs: Long = 1000L,
     val inCarDeactivationDelayMs: Long = 2000L,
-    val settingsReturnDelaySeconds: Float = 5.0f,
     
     val clockSizeSp: Int = 180,
     val notificationIconSizeSp: Int = 44,

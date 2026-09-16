@@ -325,7 +325,7 @@ fun SettingsScreen(
                                 onValueChange = { onSettingsChanged(settings.copy(telegramChannelId = it)) }
                             )
                             Button(
-                                onClick = { com.example.magneticclock.data.MusicPlayerManager.fetchPlaylist(settings.telegramBotToken, settings.telegramChannelId) },
+                                onClick = { com.example.magneticclock.data.MusicPlayerManager.fetchPlaylist(context, settings.telegramBotToken, settings.telegramChannelId) },
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                             ) {
                                 Text("Оновити плейлист")

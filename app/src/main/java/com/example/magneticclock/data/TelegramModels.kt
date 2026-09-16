@@ -31,9 +31,10 @@ data class TelegramFile(
 )
 
 data class MusicTrack(
-    val id: String,
+    val id: String, // file_unique_id (persistent)
+    val fileId: String, // file_id (needed for getFile, can change but usually works)
     val title: String,
     val artist: String,
-    val url: String,
+    val url: String, // temporary
     val durationMs: Long
 )
